@@ -1,0 +1,213 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   our tiny vault — global style
+   Palette + paper physics. Everything visual that is not a Tailwind utility.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --vault-cream: #fcfbf7;
+  --vault-cream-2: #f5f1e6;
+  --vault-ink: #4a3f35;
+  --vault-ink-soft: #6e6154;
+  --vault-ink-faint: #9c9186;
+  --vault-blush: #f4c7c3;
+  --vault-butter: #f7e3a1;
+  --vault-sage: #b9cdb4;
+  --vault-cardboard: #c89f73;
+  --vault-line: rgba(74, 63, 53, 0.14);
+  --paper-shadow: 0 1px 2px rgba(74, 63, 53, 0.06), 0 8px 20px -8px rgba(74, 63, 53, 0.22);
+}
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-cream text-ink font-sketch antialiased;
+    background-image: theme('backgroundImage.grain');
+    background-attachment: fixed;
+    min-height: 100dvh;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply font-round;
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: var(--vault-butter);
+    color: var(--vault-ink);
+  }
+
+  /* A thin, warm scrollbar. Small thing, but a grey one breaks the spell. */
+  * {
+    scrollbar-color: rgba(200, 159, 115, 0.55) transparent;
+    scrollbar-width: thin;
+  }
+
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background: rgba(200, 159, 115, 0.5);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  :focus-visible {
+    outline: 2px dashed var(--vault-cardboard);
+    outline-offset: 3px;
+  }
+}
+
+@layer components {
+  /* ── paper ─────────────────────────────────────────────────────────────── */
+  .paper {
+    @apply relative rounded-2xl border border-cream-300 bg-cream-50;
+    box-shadow: var(--paper-shadow);
+  }
+
+  /* dotted grid paper, like a notebook page */
+  .paper-dotted {
+    background-image: theme('backgroundImage.dots');
+    background-size: 18px 18px;
+  }
+
+  .paper-ruled {
+    background-image: theme('backgroundImage.ruled');
+    background-size: 100% 28px;
+  }
+
+  /* cork pinboard for the prediction slips */
+  .cork {
+    background-color: var(--vault-cardboard);
+    background-image: theme('backgroundImage.cork');
+    background-size: 26px 26px;
+    box-shadow:
+      inset 0 2px 12px rgba(74, 63, 53, 0.35),
+      inset 0 -2px 8px rgba(255, 255, 255, 0.18),
+      0 10px 24px -12px rgba(74, 63, 53, 0.5);
+  }
+
+  /* ── torn paper tag (the countdown) ───────────────────────────────────── */
+  .torn-tag {
+    clip-path: polygon(
+      2% 4%, 12% 1%, 26% 3%, 41% 0%, 57% 3%, 72% 1%, 86% 4%, 98% 2%,
+      100% 22%, 98% 44%, 100% 66%, 97% 88%, 99% 100%,
+      84% 97%, 69% 100%, 53% 97%, 38% 100%, 23% 97%, 9% 100%, 1% 96%,
+      3% 74%, 0% 52%, 3% 30%
+    );
+  }
+
+  .torn-strip {
+    clip-path: polygon(
+      0% 12%, 6% 4%, 18% 10%, 32% 2%, 47% 9%, 62% 1%, 77% 8%, 91% 3%, 100% 11%,
+      98% 30%, 100% 52%, 97% 74%, 100% 90%, 92% 98%, 78% 92%, 63% 100%,
+      48% 93%, 33% 99%, 18% 92%, 5% 98%, 0% 88%, 2% 66%, 0% 44%, 3% 26%
+    );
+  }
+
+  /* ── washi tape strips ────────────────────────────────────────────────── */
+  .washi {
+    background: linear-gradient(
+      100deg,
+      rgba(244, 199, 195, 0.85),
+      rgba(247, 227, 161, 0.7) 45%,
+      rgba(185, 205, 180, 0.8)
+    );
+    box-shadow: 0 2px 6px -2px rgba(74, 63, 53, 0.35);
+    opacity: 0.92;
+    backdrop-filter: blur(0.5px);
+  }
+
+  /* ── ink strokes ──────────────────────────────────────────────────────── */
+  .hand-underline {
+    background-image: linear-gradient(to right, rgba(74, 63, 53, 0.4) 0%, rgba(74, 63, 53, 0.18) 100%);
+    background-repeat: no-repeat;
+    background-position: 0 88%;
+    background-size: 100% 0.32em;
+  }
+
+  .stamp {
+    @apply inline-flex items-center gap-1 rounded-full border-2 border-dashed px-3 py-1
+           text-[11px] font-bold uppercase tracking-[0.16em];
+  }
+
+  /* ── inputs that look like they were drawn, not generated ────────────── */
+  .field {
+    @apply w-full rounded-xl border-2 border-cream-300 bg-cream-50 px-4 py-3 font-sketch
+           text-[15px] text-ink placeholder:text-ink-faint/70 focus:outline-none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .field:focus {
+    border-color: var(--vault-cardboard);
+    box-shadow: 0 0 0 4px rgba(247, 227, 161, 0.55);
+    transform: translateY(-1px);
+  }
+
+  .field-label {
+    @apply mb-1.5 block text-[13px] font-bold uppercase tracking-[0.12em] text-ink-soft;
+  }
+
+  /* ── party bits ───────────────────────────────────────────────────────── */
+  .reaction-pill {
+    @apply grid h-11 w-11 place-items-center rounded-full border border-cream-300 bg-cream-50 text-xl;
+    box-shadow: 0 4px 10px -6px rgba(74, 63, 53, 0.4);
+  }
+
+  .scratch-canvas {
+    touch-action: none;
+    cursor: grab;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Subtle vertical float, used on stickers and hanging tags. */
+  .hang {
+    animation: hang 5.5s ease-in-out infinite;
+  }
+
+  @keyframes hang {
+    0%, 100% { transform: translateY(0) rotate(-1.2deg); }
+    50% { transform: translateY(-7px) rotate(1.2deg); }
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Accessibility: if someone asked the OS to calm things down, calm them down.
+   Motion is the garnish here, never the message.
+   ═══════════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "name": "our-tiny-vault",
+  "version": "0.1.0",
+  "private": true,
+  "description": "our tiny vault - a collaborative online time capsule. $0-budget architecture.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "cron:local": "node -e \"fetch('http://localhost:3000/api/cron/check-unlocks',{method:'POST',headers:{authorization:'Bearer '+(process.env.CRON_SECRET||'dev-secret')}}).then(r=>r.text()).then(console.log)\"",
+    "keepalive:local": "node -e \"fetch('http://localhost:3000/api/health').then(r=>r.json()).then(o=>console.log(JSON.stringify(o,null,2)))\""
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.5.2",
+    "@supabase/supabase-js": "^2.45.4",
+    "browser-image-compression": "^2.0.2",
+    "framer-motion": "^11.11.9",
+    "next": "^14.2.33",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "resend": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.5",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.14",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=18.17.0"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/check-unlocks",
+      "schedule": "0 0 * * *"
+    }
+  ],
+  "functions": {
+    "src/app/api/cron/check-unlocks/route.ts": {
+      "maxDuration": 60
+    }
+  }
+}

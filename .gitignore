@@ -1,0 +1,40 @@
+# ── dependencies ─────────────────────────────────────────────────────────────
+node_modules/
+.pnp
+.pnp.js
+
+# ── next.js ──────────────────────────────────────────────────────────────────
+.next/
+out/
+build/
+next-env.d.ts
+*.tsbuildinfo
+
+# ── env / secrets ────────────────────────────────────────────────────────────
+.env
+.env*.local
+
+# ── vercel ───────────────────────────────────────────────────────────────────
+.vercel/
+
+# ── misc ─────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+coverage/
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# ── local supabase CLI state ─────────────────────────────────────────────────
+supabase/.temp/
+supabase/.branches/
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Local-only engineering docs (project convention: these stay private/untracked;
+# only user-facing docs like README.md stay tracked and pushed).
+# ─────────────────────────────────────────────────────────────────────────────
+decision.md
+Flow.md
+learn.md
+TECHNICAL-GUIDE.md
