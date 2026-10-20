@@ -46,8 +46,8 @@ export async function createCapsule(formData: FormData): Promise<ActionResult<{ 
   // The database enforces "later than now" and "within 50 years". We check the
   // common case here so the user gets a sentence instead of a stack trace.
   const now = Date.now();
-  if (unlockAt.getTime() <= now + 60_000) {
-    return { ok: false, error: 'Pick a moment in the future — at least a minute away.' };
+  if (unlockAt.getTime() <= now + 10_000) {
+    return { ok: false, error: 'Pick a moment in the future — at least ten seconds away.' };
   }
   if (unlockAt.getTime() > now + 50 * 365.25 * 86400_000) {
     return { ok: false, error: 'Fifty years is the limit. Beyond that, who is this even for?' };

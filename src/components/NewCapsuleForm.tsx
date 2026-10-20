@@ -20,6 +20,10 @@ const THEMES = [
 ] as const;
 
 const PRESETS = [
+  { label: '5 minutes', minutes: 5 },
+  { label: '1 hour', hours: 1 },
+  { label: '24 hours', hours: 24 },
+  { label: '1 week', days: 7 },
   { label: '1 year', years: 1 },
   { label: '3 years', years: 3 },
   { label: '5 years', years: 5 },
@@ -43,15 +47,17 @@ export function NewCapsuleForm() {
   const [maxMembers, setMaxMembers] = useState(12);
   const [years, setYears] = useState(5);
   const [customDate, setCustomDate] = useState('');
+  const [offsetMinutes, setOffsetMinutes] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const unlockPreview = useMemo(() => {
+    if (offsetMinutes !== null) return new Date(Date.now() + offsetMinutes * 60_000);
     if (customDate) return new Date(`${customDate}T12:00:00Z`);
     const date = new Date();
     date.setFullYear(date.getFullYear() + years);
     return date;
-  }, [customDate, years]);
+  }, [customDate, years, offsetMinutes]);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -168,8 +174,7 @@ export function NewCapsuleForm() {
 
         <h2 className="font-round text-xl font-bold text-cardboard-deep">when does it open?</h2>
         <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">
-          The date can only ever be moved <em>later</em>, never earlier — not even by you. A vault you
-          can open on a whim is not a vault.
+          Long unlocks keep it safe; short ones are fine for testing. The date can only ever be moved <em>later</em>, never earlier.
         </p>
 
         <div className="mt-5 flex flex-wrap gap-2">
@@ -178,18 +183,32 @@ export function NewCapsuleForm() {
               key={preset.label}
               type="button"
               onClick={() => {
-                setYears(preset.years);
+                setOffsetMinutes(null);
                 setCustomDate('');
+                if (preset.years) setYears(preset.years);
+                if (preset.minutes) setOffsetMinutes(preset.minutes);
+                if (preset.hours) setOffsetMinutes(preset.hours * 60);
+                if (preset.days) setOffsetMinutes(preset.days * 24 * 60);
               }}
-              aria-pressed={!customDate && years === preset.years}
+              aria-pressed={
+                (offsetMinutes !== null &&
+                  ((preset.minutes && offsetMinutes === preset.minutes) ||
+                    (preset.hours && offsetMinutes === preset.hours * 60) ||
+                    (preset.days && offsetMinutes === preset.days * 24 * 60))) ||
+                (offsetMinutes === null &&
+                  !customDate &&
+                  !!preset.years &&
+                  years === preset.years)
+              }
               className={cn(
                 'rounded-full border px-4 py-2 font-round text-[13px] font-semibold',
-                !customDate && years === preset.years
+                (offsetMinutes !== null && ((preset.minutes && offsetMinutes === preset.minutes) || (preset.hours && offsetMinutes === preset.hours * 60) || (preset.days && offsetMinutes === preset.days * 24 * 60))) ||
+                  (!customDate && offsetMinutes === null && preset.years && years === preset.years)
                   ? 'border-cardboard/70 bg-cream-50 shadow-paper'
                   : 'border-cardboard/30 bg-cream-100/70 hover:bg-cream-50',
               )}
             >
-              +{preset.label}
+              {preset.years ? '+' : ''}{preset.label}
             </button>
           ))}
         </div>
@@ -203,7 +222,10 @@ export function NewCapsuleForm() {
             type="date"
             value={customDate}
             min={new Date(Date.now() + 86_400_000).toISOString().slice(0, 10)}
-            onChange={(event) => setCustomDate(event.target.value)}
+            onChange={(event) => {
+              setOffsetMinutes(null);
+              setCustomDate(event.target.value);
+            }}
             className="field"
           />
         </div>
@@ -217,16 +239,22 @@ export function NewCapsuleForm() {
           <span className="text-2xl">🗓️</span>
           <span>
             <span className="block text-[11px] uppercase tracking-[0.16em] text-ink-faint">
-              opens at 12:00 UTC on
+              {offsetMinutes !== null ? 'opens in' : 'opens at 12:00 UTC on'}
             </span>
             <span className="font-round text-base font-bold text-ink">
-              {Number.isNaN(unlockPreview.getTime()) ? '—' : formatUnlockDate(unlockPreview.toISOString())}
+              {Number.isNaN(unlockPreview.getTime())
+                ? '—'
+                : offsetMinutes !== null
+                  ? `${offsetMinutes >= 60 ? `${Math.floor(offsetMinutes / 60)}h` : ''} ${offsetMinutes % 60 ? `${offsetMinutes % 60}m` : ''}`.trim() || `${offsetMinutes}m`
+                  : formatUnlockDate(unlockPreview.toISOString())}
             </span>
           </span>
           <Stamp tone="butter">
             {Number.isNaN(unlockPreview.getTime())
               ? '—'
-              : `${Math.max(1, Math.round((unlockPreview.getTime() - Date.now()) / (365.25 * 86400_000)))}y`}
+              : offsetMinutes !== null
+                ? 'soon'
+                : `${Math.max(1, Math.round((unlockPreview.getTime() - Date.now()) / (365.25 * 86400_000)))}y`}
           </Stamp>
         </motion.div>
       </section>
