@@ -8,15 +8,21 @@ export const dynamic = 'force-dynamic';
 /**
  * Where the magic link lands.
  *
- * Two shapes of link are handled because Supabase can send either depending on
- * the email template and auth flow you have configured:
+ * Three shapes of link are handled because Supabase can send any of them
+ * depending on the email template and auth flow in play:
  *
- *   • PKCE  → `?code=…`            → exchangeCodeForSession
- *   • OTP   → `?token_hash=…&type=email` → verifyOtp
+ *   • implicit → `#access_token=…`      → the *browser* completes this one
+ *   • PKCE     → `?code=…`              → exchangeCodeForSession
+ *   • OTP      → `?token_hash=…&type=…` → verifyOtp
  *
- * Supporting both means changing the email template in the Supabase dashboard
- * does not silently break sign-in — which, for an app nobody touches for two
- * years, is the difference between working and mysteriously dead.
+ * The implicit case is the one to understand, because it looks like nothing
+ * happened. Token data after a `#` is a URL fragment, and browsers never send
+ * fragments to the server — so this route genuinely sees an empty query string,
+ * even though the sign-in is perfectly fine. Erroring here would break the very
+ * flow we switched to on purpose (see the note in lib/supabase/client.ts).
+ *
+ * So: no token at all is not a failure. It means "let the browser look in the
+ * fragment." Only a *malformed* or *rejected* token is a real failure.
  */
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -27,6 +33,13 @@ export async function GET(request: Request) {
 
   if (!env.isSupabaseConfigured) {
     return NextResponse.redirect(new URL('/login?error=not_configured', url.origin));
+  }
+
+  // No credentials in the query string. With the implicit flow the tokens are
+  // waiting in the fragment, which only the browser can read. Send the user on
+  // to their destination and let the client pick the session up there.
+  if (!code && !tokenHash) {
+    return NextResponse.redirect(new URL(next, url.origin));
   }
 
   const supabase = createServerSupabase();
@@ -41,8 +54,6 @@ export async function GET(request: Request) {
       type: type as 'email' | 'magiclink' | 'signup' | 'recovery' | 'email_change',
     });
     if (error) failure = error.message;
-  } else {
-    failure = 'That link was missing its token.';
   }
 
   if (failure) {

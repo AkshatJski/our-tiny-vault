@@ -18,6 +18,11 @@ export function createServerSupabase(): SupabaseClient {
   const cookieStore = cookies();
 
   return createServerClient(env.supabaseUrl, env.supabaseAnonKey, {
+    auth: {
+      // Must match client.ts. If the two disagree, whichever ran last wins and
+      // the auth flow becomes nondeterministic — see the note in client.ts.
+      flowType: 'implicit',
+    },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet: CookieToSet[]) => {

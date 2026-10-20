@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import { Comic_Neue, Fredoka, Grand_Hotel } from 'next/font/google';
 import './globals.css';
 import { env } from '@/lib/env';
+import { AuthFragmentHandler } from '@/components/auth/AuthFragmentHandler';
 
 /**
  * Three faces, three jobs:
@@ -102,6 +103,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </svg>
 
         {children}
+        {/* Reads an implicit-flow token out of the URL fragment on landing. */}
+        <AuthFragmentHandler />
       </body>
     </html>
   );
