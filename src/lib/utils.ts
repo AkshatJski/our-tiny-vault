@@ -107,13 +107,34 @@ export function truncate(value: string, max: number): string {
 
 /** Somewhere for the guest to look. Never decides authorization. */
 export function friendlyError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : String(error ?? '');
-  if (/capacity:/.test(raw)) return raw.replace(/^capacity:\s*/, '');
-  if (/budget:/.test(raw)) return raw.replace(/^budget:\s*/, '');
-  if (/invite:/.test(raw)) return raw.replace(/^invite:\s*/, '');
-  if (/promise:/.test(raw)) return raw.replace(/^promise:\s*/, '');
-  if (/sealed:/.test(raw)) return raw.replace(/^sealed:\s*/, '');
-  if (/guess:/.test(raw)) return raw.replace(/^guess:\s*/, '');
+  let raw = '';
+  if (error instanceof Error) {
+    raw = error.message;
+  } else if (typeof error === 'string') {
+    raw = error;
+  } else if (error && typeof error === 'object') {
+    const e = error as Record<string, unknown>;
+    raw =
+      (typeof e.message === 'string' && e.message) ||
+      (typeof e.error_description === 'string' && e.error_description) ||
+      (typeof e.error === 'string' && e.error) ||
+      (typeof e.details === 'string' && e.details) ||
+      (typeof e.msg === 'string' && e.msg) ||
+      '';
+  } else {
+    raw = String(error ?? '');
+  }
+
+  if (!raw || raw === '[object Object]') {
+    return 'Something went sideways. Try again in a moment.';
+  }
+
+  if (/capacity:/.test(raw)) return raw.replace(/^capacity:\s*/i, '');
+  if (/budget:/.test(raw)) return raw.replace(/^budget:\s*/i, '');
+  if (/invite:/.test(raw)) return raw.replace(/^invite:\s*/i, '');
+  if (/promise:/.test(raw)) return raw.replace(/^promise:\s*/i, '');
+  if (/sealed:/.test(raw)) return raw.replace(/^sealed:\s*/i, '');
+  if (/guess:/.test(raw)) return raw.replace(/^guess:\s*/i, '');
   if (/duplicate key/i.test(raw)) return 'That is already saved.';
   if (/JWT|session|token/i.test(raw)) return 'Your session expired. Please sign in again.';
   if (/row-level security|42501/i.test(raw)) return 'That door is locked right now.';
