@@ -165,6 +165,38 @@ export async function updateProfile(formData: FormData): Promise<ActionResult> {
   return { ok: true };
 }
 
+export async function deleteCapsule(capsuleId: string): Promise<ActionResult> {
+  if (!env.isSupabaseConfigured) {
+    return { ok: false, error: 'Supabase is not configured yet.' };
+  }
+
+  const supabase = createServerSupabase();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, error: 'Sign in first.' };
+
+  const id = String(capsuleId ?? '').trim();
+  if (!id) return { ok: false, error: 'Missing capsule ID.' };
+
+  const { data: capsule, error: cErr } = await supabase
+    .from('capsules')
+    .select('id, owner_id, unlock_at')
+    .eq('id', id)
+    .single<{ id: string; owner_id: string; unlock_at: string }>();
+  if (cErr || !capsule) return { ok: false, error: 'Capsule not found.' };
+  if (capsule.owner_id !== user.id) return { ok: false, error: 'Only the owner can delete this vault.' };
+
+  const unlocked = new Date(capsule.unlock_at).getTime() <= Date.now();
+  if (!unlocked) return { ok: false, error: 'You can only delete the vault after it has opened.' };
+
+  const { error } = await supabase.from('capsules').delete().eq('id', id).eq('owner_id', user.id);
+  if (error) return { ok: false, error: friendlyError(error) };
+
+  revalidatePath('/capsules');
+  return { ok: true };
+}
+
 /** Force a specific UTC hour so unlock dates are comparable across timezones. */
 function withUtcHour(iso: string, hour: number): string {
   const date = new Date(iso);

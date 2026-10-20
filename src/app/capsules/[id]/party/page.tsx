@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { CountdownTag } from '@/components/CountdownTag';
-import { PartyLobby } from '@/components/party/PartyLobby';
 import { BouncyButton } from '@/components/ui/BouncyButton';
 import { SketchyFrame, Stamp } from '@/components/ui/PaperBits';
 import { createServerSupabase, getSessionProfile } from '@/lib/supabase/server';
@@ -11,7 +11,18 @@ import { formatUnlockMoment } from '@/lib/utils';
 import { PRESENCE_CAP } from '@/lib/budget';
 import type { CapsuleSummary, ContributionWithAuthor, PredictionWithAuthor } from '@/lib/types';
 
-export const dynamic = 'force-dynamic';
+const PartyLobby = dynamic(() => import('@/components/party/PartyLobby').then((m) => m.PartyLobby), {
+  ssr: false,
+  loading: () => (
+    <main className="mx-auto w-full max-w-6xl px-5 pb-24 pt-10 sm:px-8">
+      <div className="rounded-3xl border border-cream-300 bg-cream-50 p-8 shadow-paper">
+        <p className="text-center font-round text-sm text-ink-soft">loading party room...</p>
+      </div>
+    </main>
+  ),
+});
+
+export const revalidate = 0;
 
 /**
  * The opening party room.

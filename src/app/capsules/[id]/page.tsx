@@ -13,6 +13,7 @@ import { env } from '@/lib/env';
 import { formatBytes, storagePercent } from '@/lib/budget';
 import { formatUnlockMoment, seededUnit } from '@/lib/utils';
 import type { CapsuleSummary, ContributionWithAuthor, PredictionWithAuthor, Profile } from '@/lib/types';
+import { DeleteVaultButton } from '@/components/DeleteVaultButton';
 
 export const dynamic = 'force-dynamic';
 
@@ -188,6 +189,12 @@ export default async function CapsuleHubPage({ params }: { params: { id: string 
                 <Link href={`/capsules/${capsule.id}/party`} className="mt-4 inline-block">
                   <BouncyButton tone="blush">🎉 open the party room</BouncyButton>
                 </Link>
+                {isOwner ? (
+                  <div>
+                    <DeleteVaultButton capsuleId={capsule.id} />
+                    <p className="mt-2 text-[10px] uppercase tracking-[0.12em] text-ink-faint">only after opening · irreversible</p>
+                  </div>
+                ) : null}
               </div>
             ) : (
               <CountdownTag unlockAt={capsule.unlock_at} />
