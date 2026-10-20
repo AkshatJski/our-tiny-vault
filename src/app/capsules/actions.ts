@@ -59,6 +59,11 @@ export async function createCapsule(formData: FormData): Promise<ActionResult<{ 
   } = await supabase.auth.getUser();
   if (!user) return { ok: false, error: 'Sign in first.' };
 
+  // For near-future unlocks (tests/presets like 5m/1h) keep the exact time.
+  // For far-future capsules normalize to 12:00 UTC so the daily cron stays deterministic.
+  const isNearFuture = unlockAt.getTime() - now < 48 * 60 * 60 * 1000;
+  const finalUnlockAt = isNearFuture ? unlockAt.toISOString() : withUtcHour(unlockAt.toISOString(), 12);
+
   const { data, error } = await supabase
     .from('capsules')
     .insert({
@@ -71,7 +76,7 @@ export async function createCapsule(formData: FormData): Promise<ActionResult<{ 
       // Noon UTC avoids a capsule opening at 23:40 on a Tuesday in one timezone
       // and 02:15 the next day in another. The daily cron then lands it squarely
       // inside "today" everywhere that matters.
-      unlock_at: withUtcHour(unlockAt.toISOString(), 12),
+      unlock_at: finalUnlockAt,
       seal_at: new Date().toISOString(),
     })
     .select('id')
