@@ -175,29 +175,41 @@ export function PartyLobby({
         });
 
         // ── presence ────────────────────────────────────────────────────
-        if (!full) {
-          channel.on('presence', { event: 'sync' }, () => {
-            const state = channel.presenceState<{
-              name?: string;
-              emoji?: string;
-              slot?: number;
-              joinedAt?: string;
-            }>();
-            const next: PartyMember[] = Object.entries(state).map(([key, metas]) => {
-              const meta = (metas[0] ?? {}) as { name?: string; emoji?: string; slot?: number; joinedAt?: string };
-              return {
-                userId: key,
-                name: meta.name ?? 'someone',
-                emoji: meta.emoji ?? '🫧',
-                slot: meta.slot ?? 0,
-                joinedAt: meta.joinedAt ?? new Date().toISOString(),
-              };
-            });
-            setMembers(next);
+        // Registered for everyone, spectators included. What the 20-slot cap
+        // governs is *tracking*, not listening — a spectator that never syncs
+        // presence sees an empty member list and reports "watching with 1"
+        // while twenty people are actually pulling the rope.
+        channel.on('presence', { event: 'sync' }, () => {
+          const state = channel.presenceState<{
+            name?: string;
+            emoji?: string;
+            slot?: number;
+            joinedAt?: string;
+          }>();
+          const next: PartyMember[] = Object.entries(state).map(([key, metas]) => {
+            const meta = (metas[0] ?? {}) as { name?: string; emoji?: string; slot?: number; joinedAt?: string };
+            return {
+              userId: key,
+              name: meta.name ?? 'someone',
+              emoji: meta.emoji ?? '🫧',
+              slot: meta.slot ?? 0,
+              joinedAt: meta.joinedAt ?? new Date().toISOString(),
+            };
           });
-        }
+          setMembers(next);
+        });
 
         channel.subscribe((status) => {
+          // The handshake can finish *after* this component unmounted (fast
+          // navigation, or StrictMode's dev double-effect). Cleanup only knows
+          // about `channelRef.current`, which a racing connect() never managed to
+          // set — so if we are already disposed, tear our own channel down here
+          // or it stays subscribed and permanently consumes one of the 200 free
+          // realtime connections.
+          if (disposed) {
+            void supabase.removeChannel(channel);
+            return;
+          }
           if (status === 'SUBSCRIBED') {
             setConnected(true);
             // Spectators deliberately do NOT track: presence is the thing we cap.

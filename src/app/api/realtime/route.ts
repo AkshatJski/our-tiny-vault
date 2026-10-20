@@ -104,7 +104,11 @@ export async function DELETE(request: Request) {
   } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ ok: false }, { status: 401 });
 
-  await supabase.rpc('release_presence_slot', { p_capsule_id: body.capsuleId });
+  // Best-effort: a failed release self-heals when the 3-minute slot TTL expires,
+  // so it must not fail the request — but it should not be silently swallowed
+  // either, or a lingering slot looks like phantom occupancy against the cap.
+  const { error: releaseError } = await supabase.rpc('release_presence_slot', { p_capsule_id: body.capsuleId });
+  if (releaseError) console.error('[realtime] release_presence_slot', releaseError.message);
   return NextResponse.json({ ok: true });
 }
 

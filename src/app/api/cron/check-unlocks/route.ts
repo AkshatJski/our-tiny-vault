@@ -209,7 +209,7 @@ async function runCron(request: Request): Promise<NextResponse<CronReport | { er
 
   report.ok = errors.length === 0 || report.emailsSent > 0;
 
-  await supabase.from('cron_runs').insert({
+  const { error: runLogError } = await supabase.from('cron_runs').insert({
     capsules_due: report.capsulesDue,
     capsules_unlocked: report.capsulesUnlocked,
     emails_queued: report.emailsQueued,
@@ -219,6 +219,9 @@ async function runCron(request: Request): Promise<NextResponse<CronReport | { er
     ok: report.ok,
     detail: report as unknown as Record<string, unknown>,
   });
+  // The run is already done; a lost audit row must not change the response, but
+  // it also must not vanish — the rest of this file reports failures explicitly.
+  if (runLogError) errors.push(`cron_runs: ${runLogError.message}`);
 
   return NextResponse.json(report, { status: report.ok ? 200 : 500 });
 }

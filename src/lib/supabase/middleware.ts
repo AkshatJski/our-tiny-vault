@@ -37,8 +37,15 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const path = request.nextUrl.pathname;
+  // `/api/realtime?ping=1` is the anonymous keep-alive an external uptime pinger
+  // calls, so it must stay public — it writes one heartbeat row and returns
+  // nothing about any capsule. Every other /api/realtime request hands out a
+  // realtime ticket, so it stays members-only.
+  const isPing = path === '/api/realtime' && request.nextUrl.searchParams.get('ping') === '1';
   const isProtected =
-    path.startsWith('/capsules') || path.startsWith('/api/realtime') || path.startsWith('/api/contributions');
+    path.startsWith('/capsules') ||
+    path.startsWith('/api/contributions') ||
+    (path.startsWith('/api/realtime') && !isPing);
 
   if (!user && isProtected) {
     const url = request.nextUrl.clone();
