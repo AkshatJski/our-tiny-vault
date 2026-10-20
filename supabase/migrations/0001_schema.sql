@@ -102,9 +102,15 @@ create table if not exists public.capsules (
 
 create index if not exists capsules_unlock_at_idx on public.capsules (unlock_at);
 create index if not exists capsules_owner_idx     on public.capsules (owner_id);
--- supports the daily cron's "what unlocks today" scan without a seq scan
+-- Partial on purpose: only capsules that still need an unlock notification are
+-- indexed, which is exactly the cron's candidate set — and it stays tiny as old
+-- capsules unlock and get stamped. `unlock_at` is indexed rather than the
+-- expression `(unlock_at at time zone 'utc')::date` because an index expression
+-- must be IMMUTABLE, and timezone-dependent casts are not reliably so. The
+-- planner uses this via the matching `unlocked_notified_at is null` predicate
+-- plus the index's natural `unlock_at` ordering, which is what the cron sorts by.
 create index if not exists capsules_due_idx
-  on public.capsules ((unlock_at at time zone 'utc')::date)
+  on public.capsules (unlock_at)
   where unlocked_notified_at is null;
 
 -- ─────────────────────────────────────────────────────────────────────────────
