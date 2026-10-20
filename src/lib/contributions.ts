@@ -24,13 +24,11 @@ import type {
  * ────────────────────────────────────────────────────────────────────────────
  */
 
-export const CONTRIBUTIONS_SELECT = `id, capsule_id, author_id, kind, body, storage_path,
-  mime_type, byte_size, duration_seconds, external_url, external_provider, created_at,
-  author:profiles!contributions_author_id_fkey(id, handle, display_name, avatar_emoji, accent_color)`;
-
-export const PREDICTIONS_SELECT = `id, capsule_id, author_id, prompt_key, prompt_text, guess,
-  resolved_guess, is_correct, resolved_at, resolved_by, created_at,
-  author:profiles!prediction_responses_author_id_fkey(id, handle, display_name, avatar_emoji)`;
+// The column lists live in a server-safe module, because this file is
+// `'use client'` and the server cannot call into it. Re-exported so the browser
+// imports below stay one line apiece. See `contributions-select.ts`.
+export { CONTRIBUTIONS_SELECT, PREDICTIONS_SELECT } from '@/lib/contributions-select';
+import { CONTRIBUTIONS_SELECT, PREDICTIONS_SELECT } from '@/lib/contributions-select';
 
 export interface SealContributionInput {
   capsuleId: string;

@@ -8,7 +8,7 @@ import { InviteCodeChip } from '@/components/InviteCodeChip';
 import { BouncyButton } from '@/components/ui/BouncyButton';
 import { DotDivider, SketchyFrame, Stamp } from '@/components/ui/PaperBits';
 import { createServerSupabase, getSessionProfile } from '@/lib/supabase/server';
-import { CONTRIBUTIONS_SELECT, PREDICTIONS_SELECT } from '@/lib/contributions';
+import { CONTRIBUTIONS_SELECT, PREDICTIONS_SELECT } from '@/lib/contributions-select';
 import { env } from '@/lib/env';
 import { formatBytes, storagePercent } from '@/lib/budget';
 import { formatUnlockMoment, seededUnit } from '@/lib/utils';

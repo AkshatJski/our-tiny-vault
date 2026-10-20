@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createServerSupabase } from '@/lib/supabase/server';
 import { env } from '@/lib/env';
-import { CONTRIBUTIONS_SELECT } from '@/lib/contributions';
+import { CONTRIBUTIONS_SELECT } from '@/lib/contributions-select';
 import { parseExternalLink } from '@/lib/video-link';
 import type { ContributionWithAuthor, ContributionKind } from '@/lib/types';
 
