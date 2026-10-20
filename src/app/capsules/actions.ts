@@ -45,11 +45,13 @@ export async function createCapsule(formData: FormData): Promise<ActionResult<{ 
 
   // The database enforces "later than now" and "within 50 years". We check the
   // common case here so the user gets a sentence instead of a stack trace.
-  const now = Date.now();
-  if (unlockAt.getTime() <= now + 10_000) {
-    return { ok: false, error: 'Pick a moment in the future — at least ten seconds away.' };
+  // Use the SAME instant for seal_at and all comparisons to avoid millisecond races.
+  const sealAt = new Date();
+  const nowMs = sealAt.getTime();
+  if (unlockAt.getTime() <= nowMs + 1000) {
+    return { ok: false, error: 'Pick a moment in the future — at least a second away.' };
   }
-  if (unlockAt.getTime() > now + 50 * 365.25 * 86400_000) {
+  if (unlockAt.getTime() > nowMs + 50 * 365.25 * 86400_000) {
     return { ok: false, error: 'Fifty years is the limit. Beyond that, who is this even for?' };
   }
 
@@ -61,7 +63,7 @@ export async function createCapsule(formData: FormData): Promise<ActionResult<{ 
 
   // For near-future unlocks (tests/presets like 5m/1h) keep the exact time.
   // For far-future capsules normalize to 12:00 UTC so the daily cron stays deterministic.
-  const isNearFuture = unlockAt.getTime() - now < 48 * 60 * 60 * 1000;
+  const isNearFuture = unlockAt.getTime() - nowMs < 48 * 60 * 60 * 1000;
   const finalUnlockAt = isNearFuture ? unlockAt.toISOString() : withUtcHour(unlockAt.toISOString(), 12);
 
   const { data, error } = await supabase
@@ -77,7 +79,7 @@ export async function createCapsule(formData: FormData): Promise<ActionResult<{ 
       // and 02:15 the next day in another. The daily cron then lands it squarely
       // inside "today" everywhere that matters.
       unlock_at: finalUnlockAt,
-      seal_at: new Date().toISOString(),
+      seal_at: sealAt.toISOString(),
     })
     .select('id')
     .single<{ id: string }>();
