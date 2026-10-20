@@ -64,7 +64,15 @@ export async function createCapsule(formData: FormData): Promise<ActionResult<{ 
   // For near-future unlocks (tests/presets like 5m/1h) keep the exact time.
   // For far-future capsules normalize to 12:00 UTC so the daily cron stays deterministic.
   const isNearFuture = unlockAt.getTime() - nowMs < 48 * 60 * 60 * 1000;
-  const finalUnlockAt = isNearFuture ? unlockAt.toISOString() : withUtcHour(unlockAt.toISOString(), 12);
+  let finalUnlockAt: string;
+  if (isNearFuture) {
+    // Guarantee unlock_at is at least 2 seconds after sealAt to satisfy DB constraint
+    const minUnlock = nowMs + 2000;
+    const chosen = unlockAt.getTime();
+    finalUnlockAt = new Date(chosen > minUnlock ? chosen : minUnlock).toISOString();
+  } else {
+    finalUnlockAt = withUtcHour(unlockAt.toISOString(), 12);
+  }
 
   const { data, error } = await supabase
     .from('capsules')
