@@ -261,3 +261,26 @@ and `cron_runs` for the record.
 **The 21st person in the party cannot pull the string.**
 Working as designed — see the presence cap above. They still see everything live;
 they are just not holding a strand.
+
+**"You can only request this after N seconds" (HTTP 429) when signing in.**
+The free Supabase tier sends at most **2 auth emails per hour, across the whole
+project** — not per person. If several people try to sign in at once, later ones are
+refused until the window passes. Two things follow:
+
+- Invite people to **sign in when they are invited**, not all on the same evening.
+  A signed-in session lasts weeks, so this only ever bites once per device.
+- The limit lives at **Supabase → Authentication → Rate Limits → "Emails sent per
+  hour"**. Raising it needs custom SMTP, which needs a domain. On the free tier,
+  leave it and stagger the sign-ins instead.
+
+**A capsule page says "Something came unstuck" with a `digest`.**
+That is the error boundary catching a render crash — nothing is lost, and sealed
+contents are never half-written. The digest identifies the request in Vercel's logs.
+Report the digest along with the page you were on.
+
+**The sign-in email lands on a different address than expected after deleting a
+Vercel project.**
+Supabase's **Site URL** is independent of Vercel — deleting a deployment does not
+update it. Re-check **Authentication → URL Configuration** and point Site URL at the
+domain you are actually serving (`https://your-app.vercel.app`), with the matching
+`/auth/callback` entries in the Redirect URLs list.
