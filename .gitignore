@@ -41,3 +41,4 @@ TECHNICAL-GUIDE.md
 
 # local env backups can contain live keys
 .env.local*
+.vercel
