@@ -9,7 +9,7 @@ import type { PartyMember } from '@/lib/realtime';
 import { clamp, cn } from '@/lib/utils';
 import { playPaperTear } from '@/lib/sound';
 
-const DRAG_RANGE = 230;
+const DRAG_RANGE = 110;
 
 /**
  * Where the rope is, in words rather than numbers.
@@ -139,8 +139,8 @@ export function UnwrapString({
       </div>
 
       {/* ── the parcel ─────────────────────────────────────────────────── */}
-      <div className="relative mx-auto grid h-[300px] w-full max-w-md place-items-center">
-        <svg viewBox="0 0 320 240" className="absolute inset-0 h-full w-full" aria-hidden="true">
+      <div className="relative mx-auto h-[392px] w-full max-w-md">
+        <svg viewBox="0 0 320 240" className="absolute inset-x-0 top-0 mx-auto h-[300px] w-full" aria-hidden="true">
           <defs>
             <linearGradient id="boxy" x1="0" y1="0" x2="0" y2="1">
               <stop offset="0%" stopColor="#E3C9A9" />
@@ -235,50 +235,49 @@ export function UnwrapString({
 
         {/* ── the pull tag ───────────────────────────────────────────── */}
         {!broken ? (
-          <motion.div
-            /**
-             * `useReducedMotion` must never gate the drag itself. It reports the
-             * operating system's "reduce animation" setting, which is on for
-             * plenty of people (and on this machine) — and the first version
-             * wired it to `drag`, which left the rope unpullable and the party
-             * permanently sealed. Reduced motion means fewer decorative
-             * animations, not a disabled hand.
-             */
-            drag={canPull ? 'y' : false}
-            dragConstraints={{ top: 0, bottom: DRAG_RANGE }}
-            dragElastic={reduce ? 0 : 0.06}
-            dragMomentum={false}
-            onDrag={(_, info) => emit(clamp(info.offset.y / DRAG_RANGE, 0, 1))}
-            onDragEnd={(_, info) => {
-              const value = clamp(info.offset.y / DRAG_RANGE, 0, 1);
-              emit(value);
-              maybeBreak(value);
-              // Deliberately no spring-back: your strand stays stretched where you
-              // left it, so the group total can only climb. Snapping back to zero
-              // would let one person's release erase what everybody else held.
-            }}
-            whileTap={canPull ? { cursor: 'grabbing' } : undefined}
-            className={cn(
-              'relative z-10 mt-[168px] select-none',
-              canPull ? 'cursor-grab' : 'cursor-not-allowed opacity-60',
-            )}
-            style={{ touchAction: 'none' }}
-          >
-            <div className="torn-strip grid h-14 w-28 place-items-center bg-butter shadow-tag">
-              <span className="font-round text-[12px] font-bold uppercase tracking-[0.16em] text-cardboard-deep">
-                {canPull ? 'pull ↓' : 'watcher'}
+          <div className="absolute left-1/2 top-[196px] z-10 -translate-x-1/2">
+            <motion.div
+              /**
+               * `useReducedMotion` must never gate the drag itself. It reports the
+               * operating system's "reduce animation" setting, which is on for
+               * plenty of people (and on this machine) — and the first version
+               * wired it to `drag`, which left the rope unpullable and the party
+               * permanently sealed. Reduced motion means fewer decorative
+               * animations, not a disabled hand.
+               */
+              drag={canPull ? 'y' : false}
+              dragConstraints={{ top: 0, bottom: DRAG_RANGE }}
+              dragElastic={reduce ? 0 : 0.06}
+              dragMomentum={false}
+              onDrag={(_, info) => emit(clamp(info.offset.y / DRAG_RANGE, 0, 1))}
+              onDragEnd={(_, info) => {
+                const value = clamp(info.offset.y / DRAG_RANGE, 0, 1);
+                emit(value);
+                maybeBreak(value);
+                // Deliberately no spring-back: your strand stays stretched where you
+                // left it, so the group total can only climb. Snapping back to zero
+                // would let one person's release erase what everybody else held.
+              }}
+              whileTap={canPull ? { cursor: 'grabbing' } : undefined}
+              className={cn('select-none', canPull ? 'cursor-grab' : 'cursor-not-allowed opacity-60')}
+              style={{ touchAction: 'none' }}
+            >
+              <div className="torn-strip grid h-14 w-28 place-items-center bg-butter shadow-tag">
+                <span className="font-round text-[12px] font-bold uppercase tracking-[0.16em] text-cardboard-deep">
+                  {canPull ? 'pull ↓' : 'watcher'}
+                </span>
+              </div>
+              <span className="mt-1 block text-center font-round text-[11px] text-ink-faint">
+                {!canPull ? 'watching along' : localPull > 0.02 ? handWord(localPull) : 'take the twine'}
               </span>
-            </div>
-            <span className="mt-1 block text-center font-round text-[11px] text-ink-faint">
-              {!canPull ? 'watching along' : localPull > 0.02 ? handWord(localPull) : 'take the twine'}
-            </span>
-          </motion.div>
+            </motion.div>
+          </div>
         ) : (
           <motion.div
             initial={{ scale: 0.7, opacity: 0, rotate: -8 }}
             animate={{ scale: 1, opacity: 1, rotate: 0 }}
             transition={{ type: 'spring', stiffness: 220, damping: 14 }}
-            className="relative z-10 mt-[150px] text-center"
+            className="absolute inset-x-0 top-[150px] z-10 text-center"
           >
             <span className="text-4xl">✂️</span>
             <p className="font-round text-sm font-bold text-cardboard-deep">the knot is undone</p>
@@ -356,7 +355,7 @@ export function UnwrapString({
                 key={index}
                 className={cn(
                   'h-3.5 flex-1 rounded-[1px] transition-colors duration-300',
-                  inked ? (broken ? 'bg-sage-deep/70' : 'bg-blush-deep/60') : 'bg-cream-300/80',
+                  inked ? (broken ? 'bg-sage-deep/70' : 'bg-blush-deep/60') : 'bg-cardboard/25',
                 )}
                 style={{ transform: `rotate(${(index % 2 === 0 ? -1 : 1) * 1.4}deg)` }}
               />
