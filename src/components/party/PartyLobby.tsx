@@ -28,7 +28,7 @@ import type {
   Profile,
   RealtimeTicket,
 } from '@/lib/types';
-import { friendlyError } from '@/lib/utils';
+import { friendlyError, formatUnlockMoment } from '@/lib/utils';
 import { playChime } from '@/lib/sound';
 
 type LobbyProfile = Pick<Profile, 'id' | 'handle' | 'display_name' | 'avatar_emoji' | 'accent_color'>;
@@ -56,13 +56,16 @@ export function PartyLobby({
   capsule,
   profile,
   initiallyUnlocked,
+  ceremonyAt,
   initialContributions,
   initialPredictions,
   initialVotes,
 }: {
   capsule: CapsuleSummary;
   profile: LobbyProfile;
+  /** True once the group has already pulled this seal open — not merely once RLS allows reading. */
   initiallyUnlocked: boolean;
+  ceremonyAt?: string | null;
   initialContributions: ContributionWithAuthor[];
   initialPredictions: PredictionWithAuthor[];
   initialVotes: PredictionVote[];
@@ -345,6 +348,11 @@ export function PartyLobby({
             'Knocking on the door…'
           )}
         </p>
+        {broken && ceremonyAt ? (
+          <p className="mt-1 font-round text-[11px] uppercase tracking-[0.14em] text-ink-faint">
+            the seal came off {formatUnlockMoment(ceremonyAt)}
+          </p>
+        ) : null}
       </header>
 
       <AnimatePresence>
@@ -390,13 +398,13 @@ export function PartyLobby({
               🫙
             </motion.span>
             <p className="mt-3 font-round text-sm font-semibold text-ink">
-              Nothing is readable until the seal breaks
+              Everything is still wrapped
             </p>
             <p className="mt-1 max-w-md text-xs leading-relaxed text-ink-faint">
               {capsule.contribution_count} contribution{capsule.contribution_count === 1 ? '' : 's'} and{' '}
               {capsule.prediction_count} guess{capsule.prediction_count === 1 ? '' : 'es'} are waiting
-              behind the policy. The database will not hand them over until the wax cracks — not to
-              you, not to anyone.
+              behind the wax. The capsule itself is already open — the room is simply not unwrapped
+              yet. Pull together and it all comes out at once.
             </p>
           </div>
         ) : (

@@ -110,6 +110,28 @@ export default async function PartyPage({ params }: { params: { id: string } }) 
     initialPredictions.map((prediction) => prediction.id),
   );
 
+  /**
+   * Has the group already pulled this one open?
+   *
+   * The capsule unlocking makes its contents *readable*; it does not mean the
+   * party has happened. Without this check the lobby opened with the seal
+   * already broken — `initiallyUnlocked` was hard-coded true — so the whole
+   * cooperative unwrap was unreachable code, and arriving late to the party
+   * meant the ceremony had silently never taken place.
+   *
+   * The break writes a `unwrap_seal_broken` row (see PartyLobby), and that row
+   * is the durable memory of the moment: readable by members only once the
+   * capsule is open, which is exactly the audience for this question.
+   */
+  const { data: ceremony } = await supabase
+    .from('realtime_events')
+    .select('created_at')
+    .eq('capsule_id', capsule.id)
+    .eq('event_type', 'unwrap_seal_broken')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle<{ created_at: string }>();
+
   return (
     <>
       <div className="mx-auto w-full max-w-4xl px-5 pt-6 sm:px-6">
@@ -123,7 +145,8 @@ export default async function PartyPage({ params }: { params: { id: string } }) 
       <PartyLobby
         capsule={capsule}
         profile={profile}
-        initiallyUnlocked
+        initiallyUnlocked={Boolean(ceremony)}
+        ceremonyAt={ceremony?.created_at ?? null}
         initialContributions={(contributionRows ?? []) as unknown as ContributionWithAuthor[]}
         initialPredictions={initialPredictions}
         initialVotes={initialVotes}
