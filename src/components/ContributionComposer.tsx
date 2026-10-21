@@ -8,7 +8,7 @@ import { ImageUploader, type PreparedImage } from '@/components/upload/ImageUplo
 import { AudioRecorder, type PreparedAudio } from '@/components/upload/AudioRecorder';
 import { VideoLinkField } from '@/components/upload/VideoLinkField';
 import { getBrowserSupabase } from '@/lib/supabase/client';
-import { sealContribution, uploadCapsuleMedia } from '@/lib/contributions';
+import { discardOrphanUpload, sealContribution, uploadCapsuleMedia } from '@/lib/contributions';
 import { parseExternalLink, LINK_HELP_TEXT, PLAYLIST_HELP_TEXT } from '@/lib/video-link';
 import type { ContributionKind, ContributionWithAuthor, ExternalProvider, Profile } from '@/lib/types';
 import { cn, friendlyError, truncate } from '@/lib/utils';
@@ -133,7 +133,7 @@ export function ContributionComposer({
         file: prepared.file,
       });
 
-      const { contribution } = await sealContribution(
+      const sealed = await sealContribution(
         supabase,
         {
           capsuleId,
@@ -152,8 +152,15 @@ export function ContributionComposer({
           avatar_emoji: profile.avatar_emoji,
           accent_color: profile.accent_color,
         },
-      );
-      return { contribution, receipt: item.mode === 'photo' ? `photo · ${Math.max(1, Math.round(uploaded.byteSize / 1024))} KB` : `voice · ${(prepared as PreparedAudio).durationSeconds}s` };
+      ).catch(async (error) => {
+        // Uploaded, but the row was refused (quota, RLS, offline). Take the
+        // bytes back out; nobody could ever reach them again. See
+        // `discardOrphanUpload` for why this matters.
+        await discardOrphanUpload(supabase, uploaded.path);
+        throw error;
+      });
+
+      return { contribution: sealed.contribution, receipt: item.mode === 'photo' ? `photo · ${Math.max(1, Math.round(uploaded.byteSize / 1024))} KB` : `voice · ${(prepared as PreparedAudio).durationSeconds}s` };
     } else if (item.mode === 'video_link' || item.mode === 'playlist_link') {
       const parsed = parseExternalLink(item.linkUrl);
       if (!parsed) throw new Error('That link is not one we can embed.');

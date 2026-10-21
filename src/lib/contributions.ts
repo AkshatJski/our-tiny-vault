@@ -185,6 +185,28 @@ export async function resolvePrediction(
  * Private bucket -> signed URL. Short-lived (10 minutes) because the page that
  * requests it also renders it immediately; nothing needs a durable public link.
  */
+/**
+ * Best-effort removal of an upload whose row was refused.
+ *
+ * The composer uploads bytes first and inserts the row second, because the row
+ * needs the path. If the insert then fails — the usual reason is the capsule's
+ * 60 MB quota, which fires precisely *because* something was just uploaded —
+ * the object is left behind with nothing pointing at it. It is invisible to
+ * every read path (the read policy resolves membership from the capsule id in
+ * the path, and no row would ever name it), so it can only ever be counted
+ * against the platform ceiling: a silent, permanent orphan.
+ *
+ * Deliberately swallows its own failure. The caller is already throwing the
+ * error the user needs to read; a cleanup problem must not replace it.
+ */
+export async function discardOrphanUpload(client: SupabaseClient, path: string): Promise<void> {
+  try {
+    await client.storage.from('capsule-media').remove([path]);
+  } catch {
+    // Nothing useful to do here — see above.
+  }
+}
+
 export async function signedMediaUrl(
   client: SupabaseClient,
   path: string,
