@@ -16,6 +16,16 @@ import { playCrinkle, playPop } from '@/lib/sound';
 
 type Mode = 'note' | 'photo' | 'audio' | 'video_link' | 'playlist_link';
 
+type BundleItem = {
+  id: string;
+  mode: Mode;
+  body: string;
+  image: PreparedImage | null;
+  audio: PreparedAudio | null;
+  linkUrl: string;
+  linkProvider: ExternalProvider | null;
+};
+
 const MODES: Array<{ id: Mode; label: string; icon: string; hint: string }> = [
   { id: 'note', label: 'note', icon: '✍️', hint: 'a few words, sealed until later' },
   { id: 'photo', label: 'photo', icon: '📷', hint: 'compressed before upload' },
@@ -57,18 +67,23 @@ export function ContributionComposer({
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
   const [showSealGuide, setShowSealGuide] = useState(false);
+  const [bundle, setBundle] = useState<BundleItem[]>([]);
 
-  const reset = () => {
-    setBody('');
+  const revokeCurrent = () => {
     if (image) URL.revokeObjectURL(image.previewUrl);
-    setImage(null);
     if (audio) URL.revokeObjectURL(audio.previewUrl);
+  };
+
+  const resetCurrent = () => {
+    setBody('');
+    revokeCurrent();
+    setImage(null);
     setAudio(null);
     setLinkUrl('');
     setLinkProvider(null);
   };
 
-  const canSubmit = (() => {
+  const canAddToBundle = (() => {
     if (busy || disabled) return false;
     switch (mode) {
       case 'note':
@@ -83,98 +98,146 @@ export function ContributionComposer({
     }
   })();
 
-  const submit = async () => {
+  const canSubmitBundle = bundle.length > 0 && !busy && !disabled;
+
+  const addToBundle = () => {
+    if (!canAddToBundle) return;
+    const item: BundleItem = {
+      id: crypto.randomUUID(),
+      mode,
+      body: body.trim(),
+      image,
+      audio,
+      linkUrl,
+      linkProvider,
+    };
+    setBundle((prev) => [...prev, item]);
+    resetCurrent();
+    playPop(0.6);
+  };
+
+  const removeFromBundle = (id: string) => {
+    setBundle((prev) => {
+      const item = prev.find((i) => i.id === id);
+      if (item?.image) URL.revokeObjectURL(item.image.previewUrl);
+      if (item?.audio) URL.revokeObjectURL(item.audio.previewUrl);
+      return prev.filter((i) => i.id !== id);
+    });
+  };
+
+  const clearBundle = () => {
+    bundle.forEach((item) => {
+      if (item.image) URL.revokeObjectURL(item.image.previewUrl);
+      if (item.audio) URL.revokeObjectURL(item.audio.previewUrl);
+    });
+    setBundle([]);
+  };
+
+  const sealItem = async (item: BundleItem) => {
+    const supabase = getBrowserSupabase();
+    const kind: ContributionKind = item.mode;
+
+    if (item.mode === 'photo' || item.mode === 'audio') {
+      const prepared = item.mode === 'photo' ? item.image : item.audio;
+      if (!prepared) throw new Error('Nothing selected.');
+
+      const uploaded = await uploadCapsuleMedia(supabase, {
+        capsuleId,
+        userId: profile.id,
+        file: prepared.file,
+      });
+
+      const { contribution } = await sealContribution(
+        supabase,
+        {
+          capsuleId,
+          authorId: profile.id,
+          kind,
+          body: item.body || null,
+          storagePath: uploaded.path,
+          mimeType: uploaded.mimeType,
+          byteSize: uploaded.byteSize,
+          durationSeconds: item.mode === 'audio' ? (prepared as PreparedAudio).durationSeconds : null,
+        },
+        {
+          id: profile.id,
+          handle: profile.handle,
+          display_name: profile.display_name,
+          avatar_emoji: profile.avatar_emoji,
+          accent_color: profile.accent_color,
+        },
+      );
+      return { contribution, receipt: item.mode === 'photo' ? `photo · ${Math.max(1, Math.round(uploaded.byteSize / 1024))} KB` : `voice · ${(prepared as PreparedAudio).durationSeconds}s` };
+    } else if (item.mode === 'video_link' || item.mode === 'playlist_link') {
+      const parsed = parseExternalLink(item.linkUrl);
+      if (!parsed) throw new Error('That link is not one we can embed.');
+
+      const { contribution } = await sealContribution(
+        supabase,
+        {
+          capsuleId,
+          authorId: profile.id,
+          kind,
+          body: item.body || null,
+          externalUrl: parsed.canonicalUrl,
+          externalProvider: parsed.provider,
+        },
+        {
+          id: profile.id,
+          handle: profile.handle,
+          display_name: profile.display_name,
+          avatar_emoji: profile.avatar_emoji,
+          accent_color: profile.accent_color,
+        },
+      );
+      return { contribution, receipt: `${parsed.label} link` };
+    } else {
+      const { contribution } = await sealContribution(
+        supabase,
+        {
+          capsuleId,
+          authorId: profile.id,
+          kind: 'note',
+          body: item.body,
+        },
+        {
+          id: profile.id,
+          handle: profile.handle,
+          display_name: profile.display_name,
+          avatar_emoji: profile.avatar_emoji,
+          accent_color: profile.accent_color,
+        },
+      );
+      return { contribution, receipt: 'note' };
+    }
+  };
+
+  const submitBundle = async () => {
+    if (bundle.length === 0) return;
     setError(null);
     setBusy(true);
     const supabase = getBrowserSupabase();
 
     try {
-      const kind: ContributionKind = mode;
-
-      // ── files go browser -> storage, never through a serverless function ──
-      if (mode === 'photo' || mode === 'audio') {
-        const prepared = mode === 'photo' ? image : audio;
-        if (!prepared) throw new Error('Nothing selected.');
-
-        const uploaded = await uploadCapsuleMedia(supabase, {
-          capsuleId,
-          userId: profile.id,
-          file: prepared.file,
-        });
-
-        const { contribution } = await sealContribution(
-          supabase,
-          {
-            capsuleId,
-            authorId: profile.id,
-            kind,
-            body: body.trim() || null,
-            storagePath: uploaded.path,
-            mimeType: uploaded.mimeType,
-            byteSize: uploaded.byteSize,
-            durationSeconds: mode === 'audio' ? (prepared as PreparedAudio).durationSeconds : null,
-          },
-          {
-            id: profile.id,
-            handle: profile.handle,
-            display_name: profile.display_name,
-            avatar_emoji: profile.avatar_emoji,
-            accent_color: profile.accent_color,
-          },
-        );
-        onSealed?.(contribution);
-        setReceipt(
-          mode === 'photo'
-            ? `Sealed a photo · ${Math.max(1, Math.round(uploaded.byteSize / 1024))} KB`
-            : `Sealed ${(prepared as PreparedAudio).durationSeconds}s of your voice`,
-        );
-      } else if (mode === 'video_link' || mode === 'playlist_link') {
-        const parsed = parseExternalLink(linkUrl);
-        if (!parsed) throw new Error('That link is not one we can embed.');
-
-        const { contribution } = await sealContribution(
-          supabase,
-          {
-            capsuleId,
-            authorId: profile.id,
-            kind,
-            body: body.trim() || null,
-            externalUrl: parsed.canonicalUrl,
-            externalProvider: parsed.provider,
-          },
-          {
-            id: profile.id,
-            handle: profile.handle,
-            display_name: profile.display_name,
-            avatar_emoji: profile.avatar_emoji,
-            accent_color: profile.accent_color,
-          },
-        );
-        onSealed?.(contribution);
-        setReceipt(`Sealed a ${parsed.label} link · 0 bytes`);
-      } else {
-        const { contribution } = await sealContribution(
-          supabase,
-          {
-            capsuleId,
-            authorId: profile.id,
-            kind: 'note',
-            body: body.trim(),
-          },
-          {
-            id: profile.id,
-            handle: profile.handle,
-            display_name: profile.display_name,
-            avatar_emoji: profile.avatar_emoji,
-            accent_color: profile.accent_color,
-          },
-        );
-        onSealed?.(contribution);
-        setReceipt('Sealed your note');
+      const results = [];
+      for (let i = 0; i < bundle.length; i++) {
+        const item = bundle[i];
+        try {
+          const res = await sealItem(item);
+          results.push(res);
+          onSealed?.(res.contribution);
+        } catch (err) {
+          throw new Error(`Failed to seal ${item.mode}: ${friendlyError(err)}`);
+        }
       }
-
-      playCrinkle(0.6);
-      reset();
+      const count = results.length;
+      setReceipt(
+        count === 1
+          ? `Sealed your ${results[0]?.receipt}`
+          : `Sealed a bundle of ${count} things — they'll show up as separate cards in the scrapbook`,
+      );
+      playCrinkle(0.7);
+      clearBundle();
     } catch (err) {
       setError(friendlyError(err));
       playPop(0.7);
@@ -358,12 +421,55 @@ export function ContributionComposer({
         ) : null}
       </AnimatePresence>
 
-      <div className="mt-4 flex items-center justify-between gap-3">
+      {bundle.length > 0 ? (
+        <div className="mt-4 rounded-xl border border-cream-300 bg-cream-100 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <p className="font-round text-xs font-semibold text-cardboard-deep">
+              Bundle ({bundle.length}) — each will become its own card
+            </p>
+            <button
+              type="button"
+              onClick={clearBundle}
+              disabled={busy}
+              className="text-[11px] text-ink-faint underline decoration-dotted underline-offset-2 hover:text-ink disabled:opacity-50"
+            >
+              clear all
+            </button>
+          </div>
+          <ul className="space-y-1.5">
+            {bundle.map((item) => (
+              <li key={item.id} className="flex items-center justify-between gap-2 rounded-lg bg-cream-50/80 px-2 py-1.5">
+                <span className="flex items-center gap-1.5 text-[12px] text-ink-soft">
+                  <span>{MODES.find((m) => m.id === item.mode)?.icon}</span>
+                  <span className="font-medium capitalize">{item.mode.replace('_', ' ')}</span>
+                  {item.mode === 'photo' && item.image && (
+                    <span className="text-ink-faint">({Math.max(1, Math.round(item.image.file.size / 1024))} KB)</span>
+                  )}
+                  {item.mode === 'audio' && item.audio && (
+                    <span className="text-ink-faint">({Math.max(0, Math.floor(item.audio.durationSeconds))}s)</span>
+                  )}
+                  {item.body && <span className="truncate text-ink-faint">· “{truncate(item.body, 40)}”</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => removeFromBundle(item.id)}
+                  disabled={busy}
+                  className="text-[11px] text-blush-deep hover:text-blush-strong disabled:opacity-50"
+                >
+                  remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="max-w-[16rem] space-y-1">
           <p className="text-[11px] leading-relaxed text-ink-faint">
             {MODES.find((item) => item.id === mode)?.hint}
           </p>
-          {!canSubmit && !busy && !disabled ? (
+          {!canAddToBundle && bundle.length === 0 && !busy && !disabled ? (
             <p className="text-[11px] font-semibold text-cardboard-deep">
               {mode === 'note' && 'Add a few words to seal'}
               {mode === 'photo' && 'Pick a photo to seal'}
@@ -372,21 +478,32 @@ export function ContributionComposer({
               {mode === 'playlist_link' && 'Paste a supported playlist link'}
             </p>
           ) : null}
-          {canSubmit && (
+          {canAddToBundle && (
             <p className="text-[11px] font-semibold text-sage-deep">
-              Looks ready! Hit seal it in to lock it away forever.
+              Looks ready! Add to bundle or seal it all at once.
             </p>
           )}
         </div>
-        <BouncyButton
-          tone="blush"
-          size="md"
-          onClick={() => void submit()}
-          disabled={!canSubmit}
-          loading={busy}
-        >
-          {busy ? 'sealing…' : 'seal it in'}
-        </BouncyButton>
+        <div className="flex flex-wrap items-center gap-2">
+          <BouncyButton
+            tone="ghost"
+            size="sm"
+            onClick={addToBundle}
+            disabled={!canAddToBundle}
+            loading={false}
+          >
+            + add to bundle
+          </BouncyButton>
+          <BouncyButton
+            tone="blush"
+            size="md"
+            onClick={() => void submitBundle()}
+            disabled={!canSubmitBundle}
+            loading={busy}
+          >
+            {busy ? 'sealing…' : bundle.length === 1 ? 'seal it in' : `seal ${bundle.length} things`}
+          </BouncyButton>
+        </div>
       </div>
     </div>
   );
