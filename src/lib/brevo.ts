@@ -49,10 +49,23 @@ export async function sendViaBrevo(args: UnlockEmailArgs): Promise<SendResult> {
         // One recipient per request on purpose: a shared `to` list would leak
         // every member's address to every other member.
         to: [{ email: args.to, name: args.displayName }],
+        // The sender address is rewritten to a shared Brevo domain (gmail.com
+        // cannot carry DKIM), so a reply would otherwise vanish into a relay
+        // nobody reads. This puts the human back on the other end.
+        replyTo: { email: env.brevoFromEmail, name: env.brevoFromName },
         subject,
         htmlContent: html,
         textContent: text,
         tags: ['vault-opened'],
+        // Off, deliberately. Click tracking rewrites every link through
+        // `sendibt3.com`, which (a) looks like phishing to a cautious reader,
+        // (b) is a deliverability signal Gmail scores against, and (c) means a
+        // third party logs who opened a private vault. The open pixel is the
+        // same trade with less benefit: we care that it arrives, not that it was
+        // read. If deliverability is ever diagnosed again, turn opens back on
+        // temporarily rather than leaving a tracker in a memory vault.
+        trackClicks: false,
+        trackOpens: false,
       }),
       signal: AbortSignal.timeout(TIMEOUT_MS),
     });

@@ -190,11 +190,74 @@ export async function deleteCapsule(capsuleId: string): Promise<ActionResult> {
   const unlocked = new Date(capsule.unlock_at).getTime() <= Date.now();
   if (!unlocked) return { ok: false, error: 'You can only delete the vault after it has opened.' };
 
+  // Media first, row second. Postgres cascades contributions and memberships
+  // when the capsule row goes, but storage objects sit in `storage.objects`
+  // with no foreign key to `capsules` — the cascade cannot see them.
+  //
+  // Order matters both ways: if we deleted the row first, the RLS policy that
+  // authorises this cleanup (`capsule_media_owner_delete`, see 0006) would stop
+  // matching, because it requires the capsule to still be open and ours. So the
+  // bytes go while the row still exists, and a storage failure aborts the whole
+  // delete rather than leaving a half-deleted vault nobody can see.
+  const cleared = await clearCapsuleMedia(supabase, id);
+  if (!cleared.ok) {
+    return { ok: false, error: `Could not clear this vault's media, so nothing was deleted. ${cleared.error}` };
+  }
+
   const { error } = await supabase.from('capsules').delete().eq('id', id).eq('owner_id', user.id);
   if (error) return { ok: false, error: friendlyError(error) };
 
   revalidatePath('/capsules');
   return { ok: true };
+}
+
+/**
+ * Delete every object under `{capsuleId}/` in the media bucket.
+ *
+ * The path convention is `{capsule_id}/{author_id}/{uuid}.{ext}`, so the top
+ * level is a list of author folders — one extra level to walk. `list()` returns
+ * folders with `metadata: null` and files with metadata set, which is how the two
+ * are told apart without guessing from names.
+ *
+ * Runs as the signed-in owner on purpose: the policy decides whether this is
+ * allowed, not this function. No service role here.
+ */
+async function clearCapsuleMedia(
+  supabase: ReturnType<typeof createServerSupabase>,
+  capsuleId: string,
+): Promise<{ ok: true; removed: number } | { ok: false; error: string }> {
+  const paths: string[] = [];
+
+  const { data: top, error: topError } = await supabase.storage
+    .from('capsule-media')
+    .list(capsuleId, { limit: 1000 });
+
+  if (topError) return { ok: false, error: topError.message };
+
+  for (const entry of top ?? []) {
+    if (entry.metadata) {
+      // A file sitting directly in the capsule folder (not expected, but cheap).
+      paths.push(`${capsuleId}/${entry.name}`);
+      continue;
+    }
+
+    const { data: files, error } = await supabase.storage
+      .from('capsule-media')
+      .list(`${capsuleId}/${entry.name}`, { limit: 1000 });
+
+    if (error) return { ok: false, error: error.message };
+
+    for (const file of files ?? []) {
+      if (file.metadata) paths.push(`${capsuleId}/${entry.name}/${file.name}`);
+    }
+  }
+
+  if (paths.length === 0) return { ok: true, removed: 0 };
+
+  const { error } = await supabase.storage.from('capsule-media').remove(paths);
+  if (error) return { ok: false, error: error.message };
+
+  return { ok: true, removed: paths.length };
 }
 
 /** Force a specific UTC hour so unlock dates are comparable across timezones. */
