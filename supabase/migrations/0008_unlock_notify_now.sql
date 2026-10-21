@@ -53,5 +53,12 @@ $$;
 
 -- Functions are executable by PUBLIC by default in Postgres, and this one can
 -- make the project send mail. Keep it for the server only.
+--
+-- Revoking from PUBLIC is NOT enough on Supabase: default privileges also grant
+-- EXECUTE to `anon` and `authenticated` by name, and those survive a PUBLIC
+-- revoke. All three have to go. (0009 re-applies this for projects that ran an
+-- earlier version of this file.)
 revoke all on function public.enqueue_unlock_notifications_for(uuid) from public;
+revoke all on function public.enqueue_unlock_notifications_for(uuid) from anon;
+revoke all on function public.enqueue_unlock_notifications_for(uuid) from authenticated;
 grant execute on function public.enqueue_unlock_notifications_for(uuid) to service_role;
