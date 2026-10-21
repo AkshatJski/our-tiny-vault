@@ -28,7 +28,22 @@
 
   body {
     @apply bg-cream text-ink font-sketch antialiased;
-    background-image: theme('backgroundImage.grain');
+    /*
+     * Three very quiet washes of colour over the paper grain.
+     *
+     * The page was not literally white (cream + 5.5% noise), but at that strength
+     * it read as white on an ordinary screen — so the craft of the cards stopped
+     * at their edges and the page around them felt like a blank sheet. These are
+     * pastels at roughly a fifth of their Tailwind strength and fixed to the
+     * viewport: scrolling moves the paper past the light instead of dragging a
+     * texture, which is what paper under a window actually does.
+     */
+    background-image:
+      radial-gradient(1100px 620px at 8% -8%, rgba(247, 227, 161, 0.30), transparent 68%),
+      radial-gradient(900px 560px at 96% 4%, rgba(185, 205, 180, 0.22), transparent 70%),
+      radial-gradient(820px 620px at 52% 112%, rgba(244, 199, 195, 0.20), transparent 68%),
+      theme('backgroundImage.grain');
+    background-repeat: no-repeat, no-repeat, no-repeat, repeat;
     background-attachment: fixed;
     min-height: 100dvh;
   }

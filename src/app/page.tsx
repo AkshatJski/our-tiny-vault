@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { BouncyButton } from '@/components/ui/BouncyButton';
 import { DotDivider, SketchyFrame, Stamp, WashiTape } from '@/components/ui/PaperBits';
-import { CountdownInline } from '@/components/CountdownTag';
 import { getSessionProfile } from '@/lib/supabase/server';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 import { env } from '@/lib/env';
@@ -172,16 +171,43 @@ export default async function LandingPage() {
   );
 }
 
+/**
+ * Days until 28 July, counted in IST.
+ *
+ * The hero tag used to read "412 days left" about a capsule that does not exist.
+ * It now tells the truth about a real date that only one person knows the meaning
+ * of — a birthday hidden in plain sight as the sample capsule. Counted from IST
+ * midnight rather than the server's UTC midnight, because a birthday that flips
+ * at 5:30 in the morning is not a birthday, and Christmas-morning excitement
+ * does not run on Greenwich Mean Time.
+ */
+function daysUntilBirthday(now = new Date()): number {
+  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+  const ist = new Date(now.getTime() + IST_OFFSET_MS);
+  const year = ist.getUTCFullYear();
+  const today = Date.UTC(year, ist.getUTCMonth(), ist.getUTCDate());
+  const thisYear = Date.UTC(year, 6, 28); // months are 0-based: 6 = July
+  const target = today <= thisYear ? thisYear : Date.UTC(year + 1, 6, 28);
+  return Math.round((target - today) / 86_400_000);
+}
+
 function SampleTag() {
-  const sampleUnlock = new Date(Date.now() + 1000 * 60 * 60 * 24 * 412).toISOString();
+  const days = daysUntilBirthday();
   return (
     <div className="relative">
-      <div className="torn-tag grid h-44 w-44 place-items-center bg-butter px-4 text-center shadow-tag">
+      <div
+        className="torn-tag grid h-44 w-44 place-items-center bg-butter px-4 text-center shadow-tag"
+        title="every year, on the 28th of july 🎂"
+      >
         <span className="font-round text-[11px] font-bold uppercase tracking-[0.22em] text-cardboard-deep/80">
           days left
         </span>
-        <span className="font-round text-6xl font-bold leading-none text-cardboard-deep">412</span>
-        <CountdownInline unlockAt={sampleUnlock} className="text-xs text-cardboard-deep/80" />
+        <span className="font-round text-6xl font-bold leading-none text-cardboard-deep">
+          {days === 0 ? '🎂' : days}
+        </span>
+        <span className="font-round text-xs text-cardboard-deep/80">
+          {days === 0 ? 'today — happy birthday' : 'until the 28th of july'}
+        </span>
       </div>
       <span className="absolute -bottom-3 -right-3 rotate-[-8deg] text-3xl">📎</span>
     </div>

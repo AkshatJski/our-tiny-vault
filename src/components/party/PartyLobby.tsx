@@ -382,6 +382,7 @@ export function PartyLobby({
 
       {/* ── the unwrap ─────────────────────────────────────────────────── */}
       <UnwrapString
+        capsuleId={capsule.id}
         members={members}
         pulls={pulls}
         broken={broken}

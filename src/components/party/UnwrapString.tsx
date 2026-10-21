@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { motion, useReducedMotion } from 'framer-motion';
+import { motion, useMotionValue, useReducedMotion } from 'framer-motion';
 import { BouncyButton } from '@/components/ui/BouncyButton';
 import { SketchyFrame, Stamp, WashiTape } from '@/components/ui/PaperBits';
 import { UNWRAP_BREAK_AT, combinedPull } from '@/lib/realtime';
@@ -55,6 +55,7 @@ function handWord(pull: number): string {
  * party rather than a button.
  */
 export function UnwrapString({
+  capsuleId,
   members,
   pulls,
   broken,
@@ -64,6 +65,8 @@ export function UnwrapString({
   memberCount,
   myUserId,
 }: {
+  /** Which parcel this is, so the pull can be remembered per person per vault. */
+  capsuleId: string;
   members: PartyMember[];
   pulls: Record<string, number>;
   broken: boolean;
@@ -79,6 +82,19 @@ export function UnwrapString({
   const [localPull, setLocalPull] = useState(0);
   const brokeRef = useRef(false);
   const lastSentRef = useRef(0);
+  const lastStoredRef = useRef(0);
+  const startYRef = useRef(0);
+
+  /**
+   * The tag's real position, as a motion value.
+   *
+   * Reading `info.offset.y` on every drag frame worked, but it only knows the
+   * distance travelled *in this drag*. Once a hand can be restored from a
+   * previous visit, the tag may already be 70 px down — so the offset has to be
+   * relative to where it sits, which is exactly what this value holds.
+   */
+  const y = useMotionValue(0);
+  const storageKey = `tiny-vault:unwrap:${capsuleId}:${myUserId}`;
 
   /**
    * The rope only gives when *every hand in the room* is holding at once.
@@ -105,8 +121,30 @@ export function UnwrapString({
   );
   const stage = groupWord(progress, broken, { alone, allHolding });
 
+  /**
+   * Remember the pull across a refresh.
+   *
+   * A pull is a small, honest record of effort. Losing it on F5 means the room
+   * forgets you were already holding, and the ritual restarts for everyone —
+   * worse, the person who pulled and refreshed looks like they never arrived.
+   * localStorage is enough: per device, survives the tab closing, costs nothing,
+   * and can never grant access to anything (RLS is still the only gate).
+   */
+  const store = (value: number, force = false) => {
+    const now = performance.now();
+    if (!force && now - lastStoredRef.current < 250) return;
+    lastStoredRef.current = now;
+    try {
+      if (value <= 0.02) window.localStorage.removeItem(storageKey);
+      else window.localStorage.setItem(storageKey, value.toFixed(3));
+    } catch {
+      /* private mode or full storage — the ceremony still works, it just forgets */
+    }
+  };
+
   const emit = (value: number) => {
     setLocalPull(value);
+    store(value);
     // Throttle to ~12/s. A broadcast per animation frame would be 60 messages a
     // second per person, which is rude to a free tier for no visible benefit.
     const now = performance.now();
@@ -114,6 +152,38 @@ export function UnwrapString({
     lastSentRef.current = now;
     onPull(value);
   };
+
+  /**
+   * Put the tag back where it was left, and tell the room.
+   *
+   * Restoring the value alone would leave the other people's screens thinking
+   * the hand was let go; re-broadcasting it means a refresh is invisible to
+   * everybody else.
+   */
+  const restoredRef = useRef(false);
+  useEffect(() => {
+    if (broken) {
+      try {
+        window.localStorage.removeItem(storageKey);
+      } catch {
+        /* nothing to clear */
+      }
+      return;
+    }
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    let stored = 0;
+    try {
+      stored = clamp(Number(window.localStorage.getItem(storageKey) ?? 0) || 0, 0, 1);
+    } catch {
+      stored = 0;
+    }
+    if (stored <= 0.02) return;
+    y.set(stored * DRAG_RANGE);
+    setLocalPull(stored);
+    onPull(stored);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [broken, storageKey]);
 
   /**
    * Somebody else's hand can tip the rope over while you are idle — this is the
@@ -236,15 +306,18 @@ export function UnwrapString({
             </>
           ) : null}
 
-          {/* the wax seal */}
+          {/* the wax seal
+              `r` is computed in render rather than animated as an SVG attribute:
+              framer's attribute animation sent `r="undefined"` for one frame on
+              mount, which the browser logs as an error and draws nothing. */}
           <motion.circle
             cx="160"
             cy="126"
-            r="19"
+            r={19 + (broken ? 11 : progress * 3)}
             fill={broken ? 'transparent' : '#D98C86'}
             stroke="rgba(168,95,90,.8)"
             strokeWidth={broken ? 0 : 2}
-            animate={broken ? { r: 30, opacity: 0 } : { r: 19 + progress * 3 }}
+            animate={{ opacity: broken ? 0 : 1 }}
             transition={{ duration: 0.7, ease: 'easeOut' }}
           />
           {!broken ? (
@@ -278,18 +351,28 @@ export function UnwrapString({
               dragConstraints={{ top: 0, bottom: DRAG_RANGE }}
               dragElastic={reduce ? 0 : 0.06}
               dragMomentum={false}
-              onDrag={(_, info) => emit(clamp(info.offset.y / DRAG_RANGE, 0, 1))}
-              onDragEnd={(_, info) => {
-                emit(clamp(info.offset.y / DRAG_RANGE, 0, 1));
+              onDragStart={() => {
+                startYRef.current = y.get();
+              }}
+              onDrag={(_, info) =>
+                emit(clamp((startYRef.current + info.offset.y) / DRAG_RANGE, 0, 1))
+              }
+              onDragEnd={() => {
+                // Read the tag's own position here, not the pointer offset: the
+                // stored value and the restored tag then land on the same pixel,
+                // so a refresh looks like nothing happened at all.
+                const value = clamp(y.get() / DRAG_RANGE, 0, 1);
+                emit(value);
+                store(value, true);
                 // The break itself is decided by the effect above, from the state
-                // of *every* hand — not from how far this one drag went.
+                // of *every* hand - not from how far this one drag went.
                 // Deliberately no spring-back: your strand stays stretched where you
                 // left it, so the group total can only climb. Snapping back to zero
                 // would let one person's release erase what everybody else held.
               }}
               whileTap={canPull ? { cursor: 'grabbing' } : undefined}
               className={cn('select-none', canPull ? 'cursor-grab' : 'cursor-not-allowed opacity-60')}
-              style={{ touchAction: 'none' }}
+              style={{ touchAction: 'none', y }}
             >
               <div className="torn-strip grid h-14 w-28 place-items-center bg-butter shadow-tag">
                 <span className="font-round text-[12px] font-bold uppercase tracking-[0.16em] text-cardboard-deep">
