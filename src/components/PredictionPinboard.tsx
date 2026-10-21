@@ -317,7 +317,7 @@ function RevealedSlip({
                 'h-3.5 w-3.5 rounded-full border',
                 kind === 'yes' && 'border-sage-deep/60 bg-sage-deep/80',
                 kind === 'no' && 'border-blush-deep/60 bg-blush-deep/70',
-                kind === 'quiet' && 'border-dashed border-cream-300 bg-cream-50',
+                kind === 'quiet' && 'border-dashed border-cardboard/35 bg-cream-200/70',
               )}
             />
           ))}
