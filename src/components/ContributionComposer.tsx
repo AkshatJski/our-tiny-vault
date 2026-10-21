@@ -56,6 +56,7 @@ export function ContributionComposer({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receipt, setReceipt] = useState<string | null>(null);
+  const [showSealGuide, setShowSealGuide] = useState(false);
 
   const reset = () => {
     setBody('');
@@ -188,11 +189,40 @@ export function ContributionComposer({
       <WashiTape className="-top-2 left-6" rotate={-3} width={78} />
 
       <div className="mb-4 flex items-baseline justify-between gap-3">
-        <h3 className="font-round text-lg font-bold text-ink">seal something in</h3>
+        <div>
+          <h3 className="font-round text-lg font-bold text-ink">seal something in</h3>
+          <button
+            type="button"
+            onClick={() => setShowSealGuide((v) => !v)}
+            className="mt-1 text-[11px] text-cardboard-deep underline decoration-dotted underline-offset-2 hover:text-ink"
+          >
+            {showSealGuide ? 'hide how sealing works' : 'how does sealing work?'}
+          </button>
+        </div>
         <span className="text-[11px] uppercase tracking-[0.14em] text-ink-faint">
           {profile.avatar_emoji} {profile.display_name}
         </span>
       </div>
+
+      <AnimatePresence>
+        {showSealGuide ? (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-4 overflow-hidden rounded-xl border border-butter-deep/40 bg-butter-light/60 p-3 text-[12px] leading-relaxed text-ink-soft"
+          >
+            <p className="font-round text-xs font-semibold text-cardboard-deep">The seal is the whole point</p>
+            <ul className="mt-2 space-y-1.5">
+              <li>• <span className="font-semibold text-ink">Pick your format</span> — note, photo, voice, video link, or playlist</li>
+              <li>• <span className="font-semibold text-ink">Add everything you want now</span> — once sealed, you cannot edit or delete it until unlock</li>
+              <li>• <span className="font-semibold text-ink">Photos/voice upload directly</span> — files go straight to storage, encrypted by the vault</li>
+              <li>• <span className="font-semibold text-ink">Links embed on open</span> — we just store the link, no uploads needed</li>
+              <li>• <span className="font-semibold text-ink">What you seal stays hidden</span> — even you can&apos;t read it back until the day it opens</li>
+            </ul>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {/* ── mode picker ─────────────────────────────────────────────────── */}
       <div className="no-scrollbar -mx-1 mb-4 flex gap-1.5 overflow-x-auto px-1 pb-1">
@@ -227,34 +257,46 @@ export function ContributionComposer({
 
       <div className="space-y-3">
         {mode === 'photo' ? (
-          <ImageUploader value={image} onChange={setImage} disabled={busy || disabled} />
+          <div>
+            <p className="mb-2 text-[12px] text-ink-soft">Add a photo to seal in your vault</p>
+            <ImageUploader value={image} onChange={setImage} disabled={busy || disabled} />
+          </div>
         ) : null}
 
         {mode === 'audio' ? (
-          <AudioRecorder value={audio} onChange={setAudio} disabled={busy || disabled} />
+          <div>
+            <p className="mb-2 text-[12px] text-ink-soft">Record or upload a voice note (up to 60s)</p>
+            <AudioRecorder value={audio} onChange={setAudio} disabled={busy || disabled} />
+          </div>
         ) : null}
 
         {mode === 'video_link' ? (
-          <VideoLinkField
-            value={linkUrl}
-            onChange={setLinkUrl}
-            provider={linkProvider}
-            onProvider={setLinkProvider}
-            helpText={LINK_HELP_TEXT}
-            disabled={busy || disabled}
-          />
+          <div>
+            <p className="mb-2 text-[12px] text-ink-soft">Paste a video link to seal (YouTube, Vimeo, etc.)</p>
+            <VideoLinkField
+              value={linkUrl}
+              onChange={setLinkUrl}
+              provider={linkProvider}
+              onProvider={setLinkProvider}
+              helpText={LINK_HELP_TEXT}
+              disabled={busy || disabled}
+            />
+          </div>
         ) : null}
 
         {mode === 'playlist_link' ? (
-          <VideoLinkField
-            value={linkUrl}
-            onChange={setLinkUrl}
-            provider={linkProvider}
-            onProvider={setLinkProvider}
-            helpText={PLAYLIST_HELP_TEXT}
-            placeholder="https://open.spotify.com/playlist/…"
-            disabled={busy || disabled}
-          />
+          <div>
+            <p className="mb-2 text-[12px] text-ink-soft">Paste a playlist link for the soundtrack of now</p>
+            <VideoLinkField
+              value={linkUrl}
+              onChange={setLinkUrl}
+              provider={linkProvider}
+              onProvider={setLinkProvider}
+              helpText={PLAYLIST_HELP_TEXT}
+              placeholder="https://open.spotify.com/playlist/…"
+              disabled={busy || disabled}
+            />
+          </div>
         ) : null}
 
         {mode === 'note' || mode === 'photo' || mode === 'audio' || mode.startsWith('video') || mode === 'playlist_link' ? (
@@ -317,9 +359,25 @@ export function ContributionComposer({
       </AnimatePresence>
 
       <div className="mt-4 flex items-center justify-between gap-3">
-        <p className="max-w-[16rem] text-[11px] leading-relaxed text-ink-faint">
-          {MODES.find((item) => item.id === mode)?.hint}
-        </p>
+        <div className="max-w-[16rem] space-y-1">
+          <p className="text-[11px] leading-relaxed text-ink-faint">
+            {MODES.find((item) => item.id === mode)?.hint}
+          </p>
+          {!canSubmit && !busy && !disabled ? (
+            <p className="text-[11px] font-semibold text-cardboard-deep">
+              {mode === 'note' && 'Add a few words to seal'}
+              {mode === 'photo' && 'Pick a photo to seal'}
+              {mode === 'audio' && 'Record or upload audio to seal'}
+              {mode === 'video_link' && 'Paste a supported video link'}
+              {mode === 'playlist_link' && 'Paste a supported playlist link'}
+            </p>
+          ) : null}
+          {canSubmit && (
+            <p className="text-[11px] font-semibold text-sage-deep">
+              Looks ready! Hit seal it in to lock it away forever.
+            </p>
+          )}
+        </div>
         <BouncyButton
           tone="blush"
           size="md"

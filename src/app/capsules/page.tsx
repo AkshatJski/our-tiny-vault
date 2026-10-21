@@ -95,6 +95,18 @@ export default async function CapsulesPage() {
 
       <JoinForm />
 
+      {opened.length > 0 ? (
+        <div className="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-sage/60 bg-sage-light/70 px-4 py-3 shadow-paper">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">🕯️</span>
+            <p className="font-round text-sm font-semibold text-cardboard-deep">
+              {opened.length === 1 ? '1 vault is open' : `${opened.length} vaults are open`}
+            </p>
+          </div>
+          <p className="text-[12px] text-ink-soft">Tap any open vault to read & celebrate</p>
+        </div>
+      ) : null}
+
       {capsules.length === 0 ? (
         <section className="mt-8 grid place-items-center rounded-3xl border-2 border-dashed border-cream-300 bg-cream-100 px-6 py-20 text-center">
           <SketchyFrame radius={22} dashed stroke="rgba(200,159,115,.5)" />

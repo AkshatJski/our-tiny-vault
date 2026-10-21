@@ -159,7 +159,7 @@ function ContributionBody({
           </div>
         )}
         {body ? (
-          <figcaption className="mt-2 px-1 text-[12px] leading-relaxed text-ink-soft">{body}</figcaption>
+          <figcaption className="mt-2 px-1 text-[12px] leading-relaxed text-ink-soft whitespace-pre-wrap break-words">{body}</figcaption>
         ) : null}
         <p className="mt-1 px-1 text-[10px] text-ink-faint">{formatBytes(contribution.byte_size)}</p>
       </figure>
@@ -185,7 +185,7 @@ function ContributionBody({
             loading the voice note…
           </div>
         )}
-        {body ? <p className="mt-2 text-[12px] text-ink-soft">{body}</p> : null}
+        {body ? <p className="mt-2 text-[12px] text-ink-soft whitespace-pre-wrap break-words">{body}</p> : null}
       </div>
     );
   }
@@ -218,7 +218,7 @@ function ContributionBody({
         ) : (
           <p className="text-[12px] text-ink-faint">A link that no longer parses.</p>
         )}
-        {body ? <p className="mt-2 text-[12px] text-ink-soft">{body}</p> : null}
+        {body ? <p className="mt-2 text-[12px] text-ink-soft whitespace-pre-wrap break-words">{body}</p> : null}
         <p className="mt-1 text-[10px] text-sage-deep">embedded · 0 MB</p>
       </div>
     );
@@ -228,8 +228,8 @@ function ContributionBody({
   return (
     <div className="relative px-1">
       <PinDot className="right-2 top-0" />
-      <p className="paper-ruled whitespace-pre-wrap py-1 pl-3 font-sketch text-[14px] leading-7 text-ink">
-        {body ? truncate(body, 4000) : ''}
+      <p className="paper-ruled whitespace-pre-wrap break-words py-1 pl-3 pr-1 font-sketch text-[14px] leading-8 text-ink">
+        {body ?? ''}
       </p>
     </div>
   );
