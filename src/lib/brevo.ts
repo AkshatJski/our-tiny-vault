@@ -31,10 +31,25 @@ export function isBrevoReady(): boolean {
   return env.brevoApiKey.length > 0 && env.brevoFromEmail.length > 0;
 }
 
-export async function sendViaBrevo(args: UnlockEmailArgs): Promise<SendResult> {
-  if (!isBrevoReady()) return { ok: false, id: null, skipped: 'not_configured' };
+export interface BrevoMessage {
+  to: { email: string; name?: string };
+  subject: string;
+  html: string;
+  text: string;
+  /** Groups messages in the Brevo dashboard, so auth mail and vault mail stay apart. */
+  tag: string;
+}
 
-  const { subject, html, text } = renderUnlockEmail(args);
+/**
+ * The one place a Brevo HTTP request is made.
+ *
+ * Two callers now: the cron's unlock letters, and Supabase's sign-in emails
+ * (delivered through the Send Email hook). They differ only in content, so the
+ * transport — headers, timeout, error shaping, the reply-to and the tracking
+ * decision — lives here once.
+ */
+export async function sendBrevoMessage(message: BrevoMessage): Promise<SendResult> {
+  if (!isBrevoReady()) return { ok: false, id: null, skipped: 'not_configured' };
 
   try {
     const response = await fetch(BREVO_ENDPOINT, {
@@ -48,15 +63,15 @@ export async function sendViaBrevo(args: UnlockEmailArgs): Promise<SendResult> {
         sender: { name: env.brevoFromName, email: env.brevoFromEmail },
         // One recipient per request on purpose: a shared `to` list would leak
         // every member's address to every other member.
-        to: [{ email: args.to, name: args.displayName }],
+        to: [{ email: message.to.email, name: message.to.name }],
         // The sender address is rewritten to a shared Brevo domain (gmail.com
         // cannot carry DKIM), so a reply would otherwise vanish into a relay
         // nobody reads. This puts the human back on the other end.
         replyTo: { email: env.brevoFromEmail, name: env.brevoFromName },
-        subject,
-        htmlContent: html,
-        textContent: text,
-        tags: ['vault-opened'],
+        subject: message.subject,
+        htmlContent: message.html,
+        textContent: message.text,
+        tags: [message.tag],
         // Off, deliberately. Click tracking rewrites every link through
         // `sendibt3.com`, which (a) looks like phishing to a cautious reader,
         // (b) is a deliverability signal Gmail scores against, and (c) means a
@@ -94,6 +109,20 @@ export async function sendViaBrevo(args: UnlockEmailArgs): Promise<SendResult> {
       error: error instanceof Error ? error.message : 'unknown brevo failure',
     };
   }
+}
+
+export async function sendViaBrevo(args: UnlockEmailArgs): Promise<SendResult> {
+  if (!isBrevoReady()) return { ok: false, id: null, skipped: 'not_configured' };
+
+  const { subject, html, text } = renderUnlockEmail(args);
+
+  return sendBrevoMessage({
+    to: { email: args.to, name: args.displayName },
+    subject,
+    html,
+    text,
+    tag: 'vault-opened',
+  });
 }
 
 async function readJson(response: Response): Promise<Record<string, unknown> | null> {

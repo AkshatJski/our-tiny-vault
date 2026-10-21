@@ -30,6 +30,14 @@ const raw = {
   resendDailyCap: Number.parseInt(process.env.RESEND_DAILY_CAP ?? '90', 10),
 
   cronSecret: process.env.CRON_SECRET ?? 'dev-secret',
+  /**
+   * Supabase's Send Email hook secret (`v1,whsec_…`). When present, sign-in mail
+   * is delivered by this app through Brevo instead of by Supabase — the built-in
+   * mailer only reaches your own team, and its SMTP handover failed for us.
+   * Clearing this variable makes the endpoint refuse everything, so the rollback
+   * is "turn the hook off in Supabase", not "delete a secret and hope".
+   */
+  sendEmailHookSecret: (process.env.SEND_EMAIL_HOOK_SECRET ?? '').trim(),
   siteUrl: (process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000').replace(/\/+$/, ''),
   enableKeepalive: process.env.ENABLE_KEEPALIVE !== 'false',
   enableWeeklyBackup: process.env.ENABLE_WEEKLY_BACKUP === 'true',
