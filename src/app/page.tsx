@@ -3,6 +3,7 @@ import { BouncyButton } from '@/components/ui/BouncyButton';
 import { DotDivider, SketchyFrame, Stamp, WashiTape } from '@/components/ui/PaperBits';
 import { CountdownInline } from '@/components/CountdownTag';
 import { getSessionProfile } from '@/lib/supabase/server';
+import { SignOutButton } from '@/components/auth/SignOutButton';
 import { env } from '@/lib/env';
 import { formatBytes, MAX_IMAGE_BYTES, EMAIL_DAILY_CAP } from '@/lib/budget';
 
@@ -32,6 +33,7 @@ export default async function LandingPage() {
                   my capsules
                 </BouncyButton>
               </Link>
+              <SignOutButton />
             </>
           ) : (
             <>

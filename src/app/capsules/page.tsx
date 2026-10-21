@@ -5,6 +5,7 @@ import { SketchyFrame, Stamp, WashiTape } from '@/components/ui/PaperBits';
 import { CountdownInline } from '@/components/CountdownTag';
 import { JoinForm } from '@/components/JoinForm';
 import { RefreshOnUnlock } from '@/components/RefreshOnUnlock';
+import { SignOutButton } from '@/components/auth/SignOutButton';
 import { createServerSupabase, getSessionProfile } from '@/lib/supabase/server';
 import { env } from '@/lib/env';
 import { formatUnlockDate, seededUnit } from '@/lib/utils';
@@ -86,6 +87,7 @@ export default async function CapsulesPage() {
           <Link href="/capsules/new">
             <BouncyButton tone="blush">🕰️ new capsule</BouncyButton>
           </Link>
+          <SignOutButton />
         </div>
       </header>
 
