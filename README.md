@@ -100,6 +100,8 @@ order. They are numbered because they build on each other.
 | `supabase/migrations/0002_rls.sql` | The whole no-read-before-unlock rule, the `SECURITY DEFINER` helper functions, and the column-level grants. |
 | `supabase/migrations/0003_functions_triggers.sql` | Counters, budget guards, `join_capsule_by_code`, `claim_presence_slot`, the cron internals. |
 | `supabase/migrations/0004_storage.sql` | The private `capsule-media` bucket, its path-based policies, `capsule-backups`, and the `storage_overview` view. |
+| `supabase/migrations/0005_fix_storage_policies.sql` | Re-asserts the bucket's size/mime limits and drops the metadata checks that made **every** photo and audio upload fail with `403`. |
+| `supabase/migrations/0006_storage_owner_delete.sql` | Lets a capsule's **owner** clear its media when they delete the vault. Without it, deleting a vault leaves every photo and voice note in the bucket forever (storage objects are not part of the database's cascade). |
 
 > If you prefer the CLI: `supabase db push` applies them in filename order for you.
 
@@ -266,7 +268,7 @@ src/
     utils.ts                     countdown parts, seeded rotation, friendlyError
     env.ts                       the only reader of process.env
     supabase/                    browser / server / admin / middleware clients
-supabase/migrations/             0001 → 0004, apply in order
+supabase/migrations/             0001 → 0006, apply in order
 ```
 
 ---
