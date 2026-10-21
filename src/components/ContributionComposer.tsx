@@ -227,7 +227,8 @@ export function ContributionComposer({
           results.push(res);
           onSealed?.(res.contribution);
         } catch (err) {
-          throw new Error(`Failed to seal ${item.mode}: ${friendlyError(err)}`);
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`Failed to seal ${item.mode}: ${msg}`);
         }
       }
       const count = results.length;
