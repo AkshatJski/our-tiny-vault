@@ -119,6 +119,36 @@ Supabase → **Authentication → URL Configuration**:
 The callback route accepts both shapes Supabase sends — `?code=` (PKCE) and
 `?token_hash=&type=` (OTP) — so you do not have to pick a flow.
 
+#### 4b. Make sign-in mail reach people who are not you
+
+This is the step that decides whether the app is yours or *ours*. Supabase's
+built-in mailer delivers **only to your own team members** and allows **2
+messages an hour for the whole project** — so friends cannot sign in, no matter
+what the UI says.
+
+The fix is the **Send Email hook**: Supabase stops sending and calls this app
+instead, and the app sends through Brevo (the same transport the unlock letters
+already use).
+
+1. Brevo → verify the From address you use (`BREVO_FROM`), so the API key can send.
+2. Vercel → environment variable `SEND_EMAIL_HOOK_SECRET`. Generate a value that
+   looks like `v1,whsec_<base64>` and keep it long and random.
+3. Supabase → **Authentication → Hooks → Send Email** → enable, type **HTTP**,
+   URL `https://<your-app>.vercel.app/api/auth/send-email`, and paste **the same**
+   secret from step 2.
+4. Redeploy so the variable is present, then request a sign-in link from an
+   address that is *not* on your Supabase team. If it arrives, you are done.
+
+Notes that save an afternoon:
+
+- The secret must match **exactly** on both sides; a mismatch fails with a 401
+  and the app's function log says `rejected — signature mismatch`.
+- If `SEND_EMAIL_HOOK_SECRET` is empty the endpoint refuses everything (fails
+  closed). Sign-in then falls back to the built-in mailer — your team only.
+- Supabase still applies a **60-second cooldown per address**. That is why two
+  clicks in a row say "you can only request this after N seconds".
+- Turning the hook **off** is the whole rollback: no deploy, no data change.
+
 ### 5. (Optional) Email notifications with Brevo — or Resend
 
 Either provider works; the app picks whichever keys are present. Both send the
@@ -188,6 +218,7 @@ npm run keepalive:local
 | `BREVO_FROM_NAME` | no | Display name on the letter. Defaults to `our tiny vault`. |
 | `EMAIL_PROVIDER` | no | `brevo` or `resend` — pins the sender when both keys exist. |
 | `EMAIL_DAILY_CAP` | no | Default 90, clamped to ≤ 90. Shared budget for either provider. |
+| `SEND_EMAIL_HOOK_SECRET` | for sign-in | Supabase Send Email hook secret (`v1,whsec_…`). Empty ⇒ endpoint refuses everything. |
 | `RESEND_API_KEY` | no | Resend sender. Needs a verified domain to reach anyone but the owner. |
 | `RESEND_FROM` | no | Resend sender line. Defaults to `onboarding@resend.dev`. |
 | `RESEND_DAILY_CAP` | no | Legacy alias for `EMAIL_DAILY_CAP`. Still read. |
@@ -302,15 +333,28 @@ Working as designed — see the presence cap above. They still see everything li
 they are just not holding a strand.
 
 **"You can only request this after N seconds" (HTTP 429) when signing in.**
-The free Supabase tier sends at most **2 auth emails per hour, across the whole
-project** — not per person. If several people try to sign in at once, later ones are
-refused until the window passes. Two things follow:
+That one is the **60-second cooldown per address**, and it is normal — it only
+means "you already asked a moment ago". Wait it out; the link from the first
+request still works.
 
-- Invite people to **sign in when they are invited**, not all on the same evening.
-  A signed-in session lasts weeks, so this only ever bites once per device.
-- The limit lives at **Supabase → Authentication → Rate Limits → "Emails sent per
-  hour"**. Raising it needs custom SMTP, which needs a domain. On the free tier,
-  leave it and stagger the sign-ins instead.
+The older, nastier version of this message was the free tier's **2 auth emails
+per hour for the whole project**. That limit applies to Supabase's *built-in*
+mailer and is the reason `SEND_EMAIL_HOOK_SECRET` exists: once the Send Email
+hook is enabled, mail leaves through Brevo and the project-wide cap no longer
+gates sign-in (verified: three sends inside one hour, all accepted). Each
+address still has its own 60-second cooldown.
+
+**A friend never receives the sign-in link.**
+Almost always one of three things, in order:
+
+1. The **Send Email hook is off** — then the built-in mailer only reaches your
+   own Supabase team, and everyone else silently gets nothing. Check
+   **Authentication → Hooks**.
+2. The **secret does not match** the `SEND_EMAIL_HOOK_SECRET` in Vercel → the
+   function log shows `auth/send-email: rejected — signature mismatch`, and
+   Supabase surfaces a 500.
+3. **Brevo refused the send** → the function log shows
+   `auth/send-email: … failed — brevo 4xx: …`, and Brevo's own log has no entry.
 
 **A capsule page says "Something came unstuck" with a `digest`.**
 That is the error boundary catching a render crash — nothing is lost, and sealed
