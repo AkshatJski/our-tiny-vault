@@ -14,6 +14,7 @@ import { formatBytes, storagePercent } from '@/lib/budget';
 import { formatUnlockMoment, seededUnit } from '@/lib/utils';
 import type { CapsuleSummary, ContributionWithAuthor, PredictionWithAuthor, Profile } from '@/lib/types';
 import { DeleteVaultButton } from '@/components/DeleteVaultButton';
+import { RefreshOnUnlock } from '@/components/RefreshOnUnlock';
 
 export const dynamic = 'force-dynamic';
 
@@ -98,6 +99,9 @@ export default async function CapsuleHubPage({ params }: { params: { id: string 
       <Link href="/capsules" className="text-[12px] uppercase tracking-[0.16em] text-ink-faint">
         ← the shelf
       </Link>
+
+      {/* When the clock runs out while this tab is open, ask the server again. */}
+      {unlocked ? null : <RefreshOnUnlock unlockAt={capsule.unlock_at} />}
 
       {/* ── the front of the box ─────────────────────────────────────────── */}
       <header className="relative mt-4 rounded-3xl border border-cream-300 bg-cream-50 p-6 shadow-paper sm:p-9">

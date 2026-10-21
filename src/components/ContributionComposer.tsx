@@ -203,47 +203,65 @@ export function ContributionComposer({
     setError(null);
     setBusy(true);
 
-    try {
-      let itemsToSeal = bundle;
-      if (bundle.length === 0 && canSubmitCurrent) {
-        itemsToSeal = [{
-          id: crypto.randomUUID(),
-          mode,
-          body: body.trim(),
-          image,
-          audio,
-          linkUrl,
-          linkProvider,
-        }];
-      }
+    const isDirect = bundle.length === 0;
 
-      const results = [];
-      for (let i = 0; i < itemsToSeal.length; i++) {
-        const item = itemsToSeal[i];
+    try {
+      const itemsToSeal: BundleItem[] = isDirect
+        ? [{
+            id: crypto.randomUUID(),
+            mode,
+            body: body.trim(),
+            image,
+            audio,
+            linkUrl,
+            linkProvider,
+          }]
+        : bundle;
+
+      const sealed: Array<{ item: BundleItem; receipt: string }> = [];
+
+      for (const item of itemsToSeal) {
         try {
           const res = await sealItem(item);
-          results.push(res);
+          sealed.push({ item, receipt: res.receipt });
           onSealed?.(res.contribution);
         } catch (err) {
-          const msg = err instanceof Error ? err.message : typeof err === 'string' ? err : JSON.stringify(err);
-          throw new Error(`Failed to seal ${item.mode}: ${msg}`);
+          // Whatever already got through stays sealed for real — drop those from
+          // the bundle so a retry cannot duplicate them.
+          const done = sealed.length;
+          if (!isDirect && done > 0) {
+            const doneIds = new Set(sealed.map((entry) => entry.item.id));
+            setBundle((prev) => prev.filter((entry) => !doneIds.has(entry.id)));
+          }
+
+          const raw = err instanceof Error ? err.message : String(err);
+          const locked = /row-level security|42501|AccessDenied/i.test(raw);
+          const failure = isDirect
+            ? `Could not seal your ${item.mode}.`
+            : `${done} of ${itemsToSeal.length} sealed — the ${item.mode} did not.`;
+
+          setError(
+            locked
+              ? `${failure} The vault is not accepting new things right now — it may have already opened.`
+              : `${failure} ${friendlyError(err)}`,
+          );
+          playPop(0.7);
+          return;
         }
       }
-      const count = results.length;
+
+      const count = sealed.length;
       setReceipt(
         count === 1
-          ? `Sealed your ${results[0]?.receipt}`
+          ? `Sealed your ${sealed[0]?.receipt}`
           : `Sealed a bundle of ${count} things — they'll show up as separate cards in the scrapbook`,
       );
       playCrinkle(0.7);
-      if (bundle.length === 0) {
+      if (isDirect) {
         resetCurrent();
       } else {
         clearBundle();
       }
-    } catch (err) {
-      setError(friendlyError(err));
-      playPop(0.7);
     } finally {
       setBusy(false);
     }

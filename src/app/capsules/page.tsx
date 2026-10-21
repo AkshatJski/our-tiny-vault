@@ -4,6 +4,7 @@ import { BouncyButton } from '@/components/ui/BouncyButton';
 import { SketchyFrame, Stamp, WashiTape } from '@/components/ui/PaperBits';
 import { CountdownInline } from '@/components/CountdownTag';
 import { JoinForm } from '@/components/JoinForm';
+import { RefreshOnUnlock } from '@/components/RefreshOnUnlock';
 import { createServerSupabase, getSessionProfile } from '@/lib/supabase/server';
 import { env } from '@/lib/env';
 import { formatUnlockDate, seededUnit } from '@/lib/utils';
@@ -66,6 +67,7 @@ export default async function CapsulesPage() {
 
   return (
     <main className="mx-auto w-full max-w-5xl px-5 pb-24 pt-10 sm:px-8">
+      <RefreshOnUnlock unlockAt={capsules.map((capsule) => capsule.unlock_at)} />
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <Link href="/" className="font-script text-2xl text-cardboard-deep">
