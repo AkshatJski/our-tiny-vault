@@ -260,12 +260,25 @@ export function PartyLobby({
   }, [capsule.id]);
 
   // ── when the seal breaks, everything unlocks itself ─────────────────────
+  const wasWrappedOnArrival = useRef(!initiallyUnlocked);
+
   useEffect(() => {
     if (!broken) return;
     void loadContents();
 
-    // Durable trace of the moment. RLS allows this insert only after unlock,
-    // which is exactly right: before unlock it would be a leak.
+    /**
+     * Only the break that happens *here* is a ceremony. Arriving after it has
+     * already happened must not write another row — and, more importantly,
+     * simply opening the room must never claim the seal came off: with the old
+     * `initiallyUnlocked` flag that effect fired on mount and recorded a party
+     * that never took place.
+     */
+    if (!wasWrappedOnArrival.current) return;
+    wasWrappedOnArrival.current = false;
+
+    // Durable trace of the moment. The guard trigger allows this insert only
+    // once the capsule is unlocked, which is exactly right: before unlock it
+    // would be a leak.
     void (async () => {
       try {
         const supabase = getBrowserSupabase();
