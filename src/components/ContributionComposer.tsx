@@ -92,7 +92,8 @@ export function ContributionComposer({
     }
   })();
 
-  const canSubmitBundle = bundle.length > 0 && !busy && !disabled;
+  const canSubmitCurrent = canAddToBundle && bundle.length === 0;
+  const canSubmitBundle = (bundle.length > 0 || canSubmitCurrent) && !busy && !disabled;
 
   const addToBundle = () => {
     if (!canAddToBundle) return;
@@ -198,15 +199,27 @@ export function ContributionComposer({
   };
 
   const submitBundle = async () => {
-    if (bundle.length === 0) return;
+    if (bundle.length === 0 && !canSubmitCurrent) return;
     setError(null);
     setBusy(true);
-    const supabase = getBrowserSupabase();
 
     try {
+      let itemsToSeal = bundle;
+      if (bundle.length === 0 && canSubmitCurrent) {
+        itemsToSeal = [{
+          id: crypto.randomUUID(),
+          mode,
+          body: body.trim(),
+          image,
+          audio,
+          linkUrl,
+          linkProvider,
+        }];
+      }
+
       const results = [];
-      for (let i = 0; i < bundle.length; i++) {
-        const item = bundle[i];
+      for (let i = 0; i < itemsToSeal.length; i++) {
+        const item = itemsToSeal[i];
         try {
           const res = await sealItem(item);
           results.push(res);
@@ -223,7 +236,11 @@ export function ContributionComposer({
           : `Sealed a bundle of ${count} things — they'll show up as separate cards in the scrapbook`,
       );
       playCrinkle(0.7);
-      clearBundle();
+      if (bundle.length === 0) {
+        resetCurrent();
+      } else {
+        clearBundle();
+      }
     } catch (err) {
       setError(friendlyError(err));
       playPop(0.7);
@@ -471,15 +488,17 @@ export function ContributionComposer({
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <BouncyButton
-            tone="ghost"
-            size="sm"
-            onClick={addToBundle}
-            disabled={!canAddToBundle}
-            loading={false}
-          >
-            + add to bundle
-          </BouncyButton>
+          {bundle.length > 0 || canAddToBundle ? (
+            <BouncyButton
+              tone="ghost"
+              size="sm"
+              onClick={addToBundle}
+              disabled={!canAddToBundle}
+              loading={false}
+            >
+              + add to bundle
+            </BouncyButton>
+          ) : null}
           <BouncyButton
             tone="blush"
             size="md"
@@ -487,7 +506,7 @@ export function ContributionComposer({
             disabled={!canSubmitBundle}
             loading={busy}
           >
-            {busy ? 'sealing…' : bundle.length === 1 ? 'seal it in' : `seal ${bundle.length} things`}
+            {busy ? 'sealing…' : bundle.length === 0 ? 'seal it in' : bundle.length === 1 ? 'seal it in' : `seal ${bundle.length} things`}
           </BouncyButton>
         </div>
       </div>
