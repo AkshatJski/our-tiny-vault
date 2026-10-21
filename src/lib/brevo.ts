@@ -28,7 +28,7 @@ const BREVO_ENDPOINT = 'https://api.brevo.com/v3/smtp/email';
 const TIMEOUT_MS = 10_000;
 
 export function isBrevoReady(): boolean {
-  return env.brevoApiKey.length > 0 && env.brevoFrom.length > 0;
+  return env.brevoApiKey.length > 0 && env.brevoFromEmail.length > 0;
 }
 
 export async function sendViaBrevo(args: UnlockEmailArgs): Promise<SendResult> {
@@ -45,7 +45,7 @@ export async function sendViaBrevo(args: UnlockEmailArgs): Promise<SendResult> {
         accept: 'application/json',
       },
       body: JSON.stringify({
-        sender: { name: env.brevoFromName, email: env.brevoFrom },
+        sender: { name: env.brevoFromName, email: env.brevoFromEmail },
         // One recipient per request on purpose: a shared `to` list would leak
         // every member's address to every other member.
         to: [{ email: args.to, name: args.displayName }],

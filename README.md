@@ -126,14 +126,23 @@ loudly, in its report.
 
 **Brevo — free, and the only one that reaches other people on $0:**
 
-<https://brevo.com> → **SMTP & API → API keys** → create a key → **Senders** →
-add the address you want to send from and click the link in that inbox. No
-domain, no card. Then:
+<https://brevo.com> → **SMTP & API → API keys tab** → create an **API key v3**
+(`xkeysib-…`) → **Senders** → add the address you want to send from and click the
+link in that inbox. No domain, no card. Then:
 
 ```
 BREVO_API_KEY=xkeysib-...
 BREVO_FROM=you@gmail.com
 ```
+
+Two traps worth knowing before you spend an hour on them:
+
+- **The SMTP key is not the API key.** Brevo's dashboard has *two* tabs. An SMTP
+  key (`xsmtpsib-…`) only logs into `smtp-relay.brevo.com`; the HTTP API rejects
+  it with `401 Key not found`. The app detects this and reports "SMTP key, not an
+  API key" instead of failing every send.
+- `BREVO_FROM` accepts `you@gmail.com` or `our tiny vault <you@gmail.com>` — the
+  address is split out for Brevo's `sender` field automatically.
 
 Heads-up, because it surprises people: free mailbox domains (gmail.com, etc.)
 cannot carry DKIM, so Brevo rewrites the visible From address to a shared
