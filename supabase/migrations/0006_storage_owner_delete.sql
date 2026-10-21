@@ -25,8 +25,8 @@
 --
 -- Delete an object in `capsule-media` when ALL of these hold:
 --   * the path is exactly `{capsule}/{author}/{file}`
---   * the capsule has opened          -> can_read_capsule_contents()
---   * the caller owns that capsule    -> capsules.owner_id = auth.uid()
+--   * the capsule has opened          -> is_capsule_unlocked()
+--   * the caller owns that capsule    -> is_capsule_owner()
 --
 -- That is deliberately narrower than "members may delete": an ordinary member
 -- still cannot remove anything, and while the vault is sealed nobody can. The
@@ -38,7 +38,7 @@
 --
 -- NOTE ON ORDERING: app code removes storage FIRST, then the row. If it were the
 -- other way round this policy would stop matching (the capsule is gone, so
--- `can_read_capsule_contents` is false) and the media would be unreachable but
+-- `is_capsule_owner` is false) and the media would be unreachable but
 -- permanent — exactly the leak this file is fixing.
 -- ─────────────────────────────────────────────────────────────────────────────
 
@@ -50,20 +50,14 @@ create policy capsule_media_owner_delete on storage.objects
     bucket_id = 'capsule-media'
     and array_length(storage.foldername(name), 1) = 2
     and public.try_uuid((storage.foldername(name))[1]) is not null
-    -- the vault is open (this is also the gate on deleting the vault itself)
-    and public.can_read_capsule_contents(public.try_uuid((storage.foldername(name))[1]))
-    -- and I am its owner, not merely a member
-    and exists (
-      select 1
-      from public.capsules c
-      where c.id = public.try_uuid((storage.foldername(name))[1])
-        and c.owner_id = auth.uid()
-    )
+    -- the vault has opened (the same gate as deleting the vault itself)
+    and public.is_capsule_unlocked(public.try_uuid((storage.foldername(name))[1]))
+    -- and I own it, not merely belong to it
+    and public.is_capsule_owner(public.try_uuid((storage.foldername(name))[1]))
   );
 
 -- ─────────────────────────────────────────────────────────────────────────────
--- Self-check. All four lines must come back `true`. If `try_uuid` is missing,
--- run 0002_rls.sql first.
+-- Self-check. Raises if the policy is missing or a helper it calls is absent.
 -- ─────────────────────────────────────────────────────────────────────────────
 do $$
 declare
@@ -75,13 +69,13 @@ begin
      and policyname = 'capsule_media_owner_delete';
 
   select count(*) into v_helpers from pg_proc
-   where proname in ('can_read_capsule_contents', 'try_uuid');
+   where proname in ('is_capsule_unlocked', 'is_capsule_owner', 'try_uuid');
 
   if v_policy <> 1 then
     raise exception 'capsule_media_owner_delete policy was not created (found %)', v_policy;
   end if;
-  if v_helpers < 2 then
-    raise exception 'helper functions missing (% found) — run 0002_rls.sql first', v_helpers;
+  if v_helpers < 3 then
+    raise exception 'helper functions missing (% of 3 found) — run 0002_rls.sql first', v_helpers;
   end if;
 
   raise notice '0006 ok: owner delete policy in place, helpers present';

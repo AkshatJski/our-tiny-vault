@@ -55,6 +55,14 @@ async function runCron(request: Request): Promise<NextResponse<CronReport | { er
   const day = new Date().toISOString().slice(0, 10);
   const errors: string[] = [];
 
+  // The operator-facing knob (`EMAIL_DAILY_CAP`), still capped by the $0
+  // ceiling in budget.ts. Without the clamp a typo or a generous value would
+  // quietly overrun the free tier, which is the one thing that must not happen.
+  // A non-numeric value parses to NaN, so fall back rather than send nothing.
+  const dailyCap = Number.isFinite(env.emailDailyCap)
+    ? Math.min(Math.max(env.emailDailyCap, 1), EMAIL_DAILY_CAP)
+    : EMAIL_DAILY_CAP;
+
   const report: CronReport = {
     ok: true,
     ranAt: new Date().toISOString(),
@@ -65,7 +73,7 @@ async function runCron(request: Request): Promise<NextResponse<CronReport | { er
     emailsQueued: 0,
     emailsSent: 0,
     emailsDeferred: 0,
-    quotaRemaining: EMAIL_DAILY_CAP,
+    quotaRemaining: dailyCap,
     pruned: 0,
     backup: 'skipped',
     errors,
@@ -107,7 +115,7 @@ async function runCron(request: Request): Promise<NextResponse<CronReport | { er
   if (quotaError) errors.push(`emails_sent_on: ${quotaError.message}`);
 
   const alreadySent = typeof usedToday === 'number' ? usedToday : 0;
-  const remaining = Math.max(0, EMAIL_DAILY_CAP - alreadySent);
+  const remaining = Math.max(0, dailyCap - alreadySent);
   report.quotaRemaining = remaining;
 
   if (remaining === 0) {

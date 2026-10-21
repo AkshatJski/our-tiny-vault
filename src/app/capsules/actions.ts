@@ -205,59 +205,121 @@ export async function deleteCapsule(capsuleId: string): Promise<ActionResult> {
   }
 
   const { error } = await supabase.from('capsules').delete().eq('id', id).eq('owner_id', user.id);
-  if (error) return { ok: false, error: friendlyError(error) };
+  if (error) {
+    // The media is already gone at this point, so the generic message would be a
+    // lie ("nothing was deleted"). Say what actually happened.
+    return {
+      ok: false,
+      error: `This vault's files were cleared, but the vault itself could not be deleted. ${friendlyError(error)}`,
+    };
+  }
 
   revalidatePath('/capsules');
   return { ok: true };
 }
 
 /**
- * Delete every object under `{capsuleId}/` in the media bucket.
+ * List every object under `{capsuleId}/` in the media bucket.
  *
  * The path convention is `{capsule_id}/{author_id}/{uuid}.{ext}`, so the top
  * level is a list of author folders — one extra level to walk. `list()` returns
  * folders with `metadata: null` and files with metadata set, which is how the two
  * are told apart without guessing from names.
  *
+ * Paged rather than `limit: 1000` and hoping: a truncated listing would look
+ * like a complete one, and deleting only part of a vault is the leak again in
+ * smaller pieces.
+ *
  * Runs as the signed-in owner on purpose: the policy decides whether this is
  * allowed, not this function. No service role here.
  */
-async function clearCapsuleMedia(
+async function listCapsuleMedia(
   supabase: ReturnType<typeof createServerSupabase>,
   capsuleId: string,
-): Promise<{ ok: true; removed: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; paths: string[] } | { ok: false; error: string }> {
+  const PAGE = 100;
+
+  const listAll = async (prefix: string) => {
+    const all: Array<{ name: string; metadata: Record<string, unknown> | null }> = [];
+    for (let offset = 0; ; offset += PAGE) {
+      const { data, error } = await supabase.storage
+        .from('capsule-media')
+        .list(prefix, { limit: PAGE, offset });
+      if (error) return { ok: false as const, error: error.message };
+      const page = (data ?? []) as Array<{ name: string; metadata: Record<string, unknown> | null }>;
+      all.push(...page);
+      if (page.length < PAGE) return { ok: true as const, entries: all };
+    }
+  };
+
+  const top = await listAll(capsuleId);
+  if (!top.ok) return top;
+
   const paths: string[] = [];
-
-  const { data: top, error: topError } = await supabase.storage
-    .from('capsule-media')
-    .list(capsuleId, { limit: 1000 });
-
-  if (topError) return { ok: false, error: topError.message };
-
-  for (const entry of top ?? []) {
+  for (const entry of top.entries) {
     if (entry.metadata) {
       // A file sitting directly in the capsule folder (not expected, but cheap).
       paths.push(`${capsuleId}/${entry.name}`);
       continue;
     }
-
-    const { data: files, error } = await supabase.storage
-      .from('capsule-media')
-      .list(`${capsuleId}/${entry.name}`, { limit: 1000 });
-
-    if (error) return { ok: false, error: error.message };
-
-    for (const file of files ?? []) {
+    const sub = await listAll(`${capsuleId}/${entry.name}`);
+    if (!sub.ok) return sub;
+    for (const file of sub.entries) {
       if (file.metadata) paths.push(`${capsuleId}/${entry.name}/${file.name}`);
     }
   }
 
-  if (paths.length === 0) return { ok: true, removed: 0 };
+  return { ok: true, paths };
+}
 
-  const { error } = await supabase.storage.from('capsule-media').remove(paths);
+/**
+ * Empty `{capsuleId}/`, or fail without having deleted anything decisive.
+ *
+ * The contract the caller relies on: `ok: true` means the prefix is provably
+ * empty right now — verified by re-listing, not inferred from a status code.
+ */
+async function clearCapsuleMedia(
+  supabase: ReturnType<typeof createServerSupabase>,
+  capsuleId: string,
+): Promise<{ ok: true; removed: number } | { ok: false; error: string }> {
+  const before = await listCapsuleMedia(supabase, capsuleId);
+  if (!before.ok) return before;
+  if (before.paths.length === 0) return { ok: true, removed: 0 };
+
+  const { data, error } = await supabase.storage.from('capsule-media').remove(before.paths);
   if (error) return { ok: false, error: error.message };
 
-  return { ok: true, removed: paths.length };
+  // The status code is not evidence. Storage answers 200 even when RLS filters
+  // out every row, handing back an empty list instead of an error — verified
+  // against the live project: a refused delete of two objects returned
+  // `HTTP 200, objects actually removed: 0/2`. Trusting that would let us
+  // delete the row below while the bytes stay in the bucket forever, which is
+  // the precise leak this function exists to prevent, only now with a false
+  // "done".
+  const removed = data?.length ?? 0;
+  if (removed < before.paths.length) {
+    return {
+      ok: false,
+      error:
+        `Only ${removed} of ${before.paths.length} file(s) could be removed — storage ` +
+        `refused the rest, most likely because migration ` +
+        `0006_storage_owner_delete.sql has not been applied yet.`,
+    };
+  }
+
+  // Ground truth. The returned list says what storage believes it deleted; this
+  // says what is actually left. If anything survived (a concurrent upload, a
+  // page that slipped past), refuse to delete the row and orphan it.
+  const after = await listCapsuleMedia(supabase, capsuleId);
+  if (!after.ok) return after;
+  if (after.paths.length > 0) {
+    return {
+      ok: false,
+      error: `${after.paths.length} file(s) are still in this vault's storage.`,
+    };
+  }
+
+  return { ok: true, removed };
 }
 
 /** Force a specific UTC hour so unlock dates are comparable across timezones. */

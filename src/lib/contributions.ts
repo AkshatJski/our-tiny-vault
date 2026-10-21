@@ -200,7 +200,24 @@ export async function deleteContribution(
   contribution: { id: string; storage_path: string | null },
 ): Promise<void> {
   if (contribution.storage_path) {
-    await client.storage.from('capsule-media').remove([contribution.storage_path]);
+    const { data, error } = await client.storage
+      .from('capsule-media')
+      .remove([contribution.storage_path]);
+    if (error) throw error;
+
+    // Same trap as `clearCapsuleMedia`: storage answers 200 with an empty list
+    // when RLS filters the row out, so an ignored `data` means "the row is gone
+    // but the file is still in the bucket". An empty list is ambiguous (refused,
+    // or already absent), and while a capsule is sealed nobody may list the
+    // folder to tell those apart — so refuse to continue rather than guess. The
+    // normal path (an author removing their own file before unlock) is permitted
+    // by `capsule_media_delete`, so this only fires when something is genuinely
+    // wrong.
+    if ((data?.length ?? 0) === 0) {
+      throw new Error(
+        'Storage did not confirm that file was removed, so the entry was left in place.',
+      );
+    }
   }
   const { error } = await client.from('contributions').delete().eq('id', contribution.id);
   if (error) throw error;
