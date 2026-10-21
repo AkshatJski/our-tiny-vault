@@ -236,11 +236,18 @@ function RevealedSlip({
   const cast = votes.length;
   const yes = votes.filter((vote) => vote.vote).length;
   const no = cast - yes;
-  const yesPercent = cast === 0 ? 0 : Math.round((yes / cast) * 100);
   const waiting = Math.max(0, memberCount - cast);
 
   const verdict: 'yes' | 'no' | 'tie' | null =
     cast === 0 ? null : yes > no ? 'yes' : no > yes ? 'no' : 'tie';
+
+  // One pin per person. Counting pins is how a room of people actually reads a
+  // show of hands — a percentage rounds away the person who broke the tie.
+  const pins: Array<'yes' | 'no' | 'quiet'> = [
+    ...Array.from({ length: yes }, () => 'yes' as const),
+    ...Array.from({ length: no }, () => 'no' as const),
+    ...Array.from({ length: waiting }, () => 'quiet' as const),
+  ];
 
   const vote = async (value: boolean) => {
     setBusy(value);
@@ -289,10 +296,10 @@ function RevealedSlip({
         </span>
       </div>
 
-      {/* The tally. Two colours, one bar: the argument itself, made visible. */}
+      {/* The show of hands. No percentages — a pin per person, so nobody is rounded away. */}
       <div className="mt-3">
         <div
-          className="flex h-2 overflow-hidden rounded-full bg-cream-300"
+          className="flex min-h-[16px] flex-wrap items-center gap-1.5"
           role="img"
           aria-label={
             cast === 0
@@ -300,19 +307,31 @@ function RevealedSlip({
               : `${yes} said yes, ${no} said no, ${waiting} still to vote`
           }
         >
-          <div className="bg-sage-deep transition-[width] duration-500" style={{ width: `${yesPercent}%` }} />
-          <div
-            className="bg-blush-deep/70 transition-[width] duration-500"
-            style={{ width: `${100 - yesPercent}%` }}
-          />
+          {pins.map((kind, index) => (
+            <motion.span
+              key={`${kind}-${index}`}
+              initial={{ scale: 0.5, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: Math.min(index * 0.03, 0.3), type: 'spring', stiffness: 300, damping: 20 }}
+              className={cn(
+                'h-3.5 w-3.5 rounded-full border',
+                kind === 'yes' && 'border-sage-deep/60 bg-sage-deep/80',
+                kind === 'no' && 'border-blush-deep/60 bg-blush-deep/70',
+                kind === 'quiet' && 'border-dashed border-cream-300 bg-cream-50',
+              )}
+            />
+          ))}
+          {pins.length === 0 ? (
+            <span className="text-[11px] text-ink-faint">nobody has said anything yet</span>
+          ) : null}
         </div>
-        <div className="mt-1 flex items-baseline justify-between gap-2 text-[11px] text-ink-faint">
+        <div className="mt-1.5 flex items-baseline justify-between gap-2 text-[11px] text-ink-faint">
           <span>
             {cast === 0
-              ? 'nobody has voted'
-              : `${yesPercent}% said yes · ${yes} of ${cast}`}
+              ? 'be the first to call it'
+              : `${yes} said yes · ${no} said no`}
           </span>
-          <span>{waiting === 0 ? 'everyone voted' : `waiting on ${waiting}`}</span>
+          <span>{waiting === 0 ? 'everyone has spoken' : `${waiting} still quiet`}</span>
         </div>
       </div>
 

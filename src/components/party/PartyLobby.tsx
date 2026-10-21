@@ -370,6 +370,7 @@ export function PartyLobby({
         onPull={sendPull}
         onBreak={breakSeal}
         canPull={!spectator}
+        memberCount={capsule.member_count}
       />
 
       {/* ── the reaction tray ──────────────────────────────────────────── */}
@@ -429,7 +430,7 @@ export function PartyLobby({
 
       {!broken ? (
         <p className="text-center text-[11px] text-ink-faint">
-          Tip: everybody who is here needs to pull. A rope does not come undone for one person.
+          Everybody here holds the twine at once. A rope does not come undone for one pair of hands.
         </p>
       ) : null}
 
