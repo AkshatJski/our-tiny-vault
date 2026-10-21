@@ -13,7 +13,6 @@ import { ensureRealtimeAuth, getBrowserSupabase } from '@/lib/supabase/client';
 import { fetchContributions, fetchPredictions } from '@/lib/contributions';
 import {
   BROADCAST,
-  combinedPull,
   partyChannelName,
   type PartyMember,
   type ReactionMessage,
@@ -296,7 +295,6 @@ export function PartyLobby({
   }, [broken]);
 
   const presentCount = memberCountFor(members);
-  const combined = combinedPull(pulls, presentCount);
 
   const sendReaction = (emoji: string) => {
     const nonce = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -386,12 +384,12 @@ export function PartyLobby({
       <UnwrapString
         members={members}
         pulls={pulls}
-        combined={broken ? 1 : combined}
         broken={broken}
         onPull={sendPull}
         onBreak={breakSeal}
         canPull={!spectator}
         memberCount={capsule.member_count}
+        myUserId={profile.id}
       />
 
       {/* ── the reaction tray ──────────────────────────────────────────── */}

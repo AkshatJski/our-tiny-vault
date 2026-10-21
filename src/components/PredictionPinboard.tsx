@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 import { AnimatePresence, motion } from 'framer-motion';
 import { BouncyButton } from '@/components/ui/BouncyButton';
 import { PinDot, SketchyFrame, Stamp } from '@/components/ui/PaperBits';
@@ -8,6 +9,7 @@ import { ScratchOffResolution } from '@/components/party/ScratchOffResolution';
 import { getBrowserSupabase } from '@/lib/supabase/client';
 import { sealPrediction } from '@/lib/contributions';
 import { castPredictionVote } from '@/lib/votes';
+import { BROADCAST, type VoteMessage } from '@/lib/realtime';
 import {
   PROMPT_PACK,
   forgetGuess,
@@ -66,6 +68,54 @@ export function PredictionPinboard({
   const members = Math.max(memberCount ?? 0, 1);
 
   /**
+   * Live votes.
+   *
+   * Before this, a vote only moved the slip of the person who cast it: everyone
+   * else saw a stale tally until they reloaded the page, which makes a "show of
+   * hands" feel like a notice board. One broadcast per vote fixes it — and cost
+   * is one extra channel per page, not one per vote.
+   *
+   * It lives here rather than in PartyLobby because the guess board is also
+   * rendered on the vault page, where no party channel exists.
+   */
+  const voteChannel = useRef<RealtimeChannel | null>(null);
+
+  useEffect(() => {
+    if (!unlocked) return;
+    const supabase = getBrowserSupabase();
+    const channel = supabase.channel(`votes:${capsuleId}`, {
+      config: { broadcast: { self: false } },
+    });
+
+    channel.on('broadcast', { event: BROADCAST.voteCast }, (message) => {
+      const payload = message.payload as Partial<VoteMessage> | undefined;
+      if (!payload?.predictionId || !payload.userId || typeof payload.vote !== 'boolean') return;
+      const incoming: PredictionVote = {
+        prediction_id: payload.predictionId,
+        user_id: payload.userId,
+        vote: payload.vote,
+        created_at: payload.at ?? new Date().toISOString(),
+        updated_at: payload.at ?? new Date().toISOString(),
+      };
+      setAllVotes((prev) => [
+        ...prev.filter(
+          (vote) =>
+            !(vote.prediction_id === incoming.prediction_id && vote.user_id === incoming.user_id),
+        ),
+        incoming,
+      ]);
+    });
+
+    channel.subscribe();
+    voteChannel.current = channel;
+
+    return () => {
+      voteChannel.current = null;
+      void supabase.removeChannel(channel);
+    };
+  }, [capsuleId, unlocked]);
+
+  /**
    * Optimistic on purpose: a vote is a tiny, reversible thing, and waiting on a
    * round-trip before the bar moves makes the room feel dead. If the write is
    * refused (sealed capsule, policy, network) we put the old list back and let
@@ -96,6 +146,21 @@ export function PredictionPinboard({
       const supabase = getBrowserSupabase();
       await castPredictionVote(supabase, { predictionId, userId: profile.id, vote: value });
       playPop(value ? 1.2 : 0.8);
+      // Tell the room. Nobody should have to reload to watch a tally change.
+      void voteChannel.current
+        ?.send({
+          type: 'broadcast',
+          event: BROADCAST.voteCast,
+          payload: {
+            predictionId,
+            userId: profile.id,
+            vote: value,
+            at: new Date().toISOString(),
+          } satisfies VoteMessage,
+        })
+        .catch(() => {
+          /* a dropped broadcast is not a failed vote: the row is already saved */
+        });
     } catch (error) {
       setAllVotes(previous);
       throw error;

@@ -30,7 +30,24 @@ export const BROADCAST = {
   sealBroken: 'seal_broken',
   scratchReveal: 'scratch_reveal',
   presenceHello: 'hello',
+  /**
+   * A vote moved on the guess board.
+   *
+   * Votes are rows in `prediction_votes`, not streamed by the database: turning on
+   * `postgres_changes` would need the table added to the `supabase_realtime`
+   * publication, and that is a schema change (dashboard-only for this project).
+   * A broadcast carries the same information for free and needs no migration.
+   */
+  voteCast: 'vote_cast',
 } as const;
+
+/** What one person's vote tells the room. */
+export interface VoteMessage {
+  predictionId: string;
+  userId: string;
+  vote: boolean;
+  at: string;
+}
 
 export interface ReactionMessage {
   emoji: string;

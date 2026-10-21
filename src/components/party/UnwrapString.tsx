@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { BouncyButton } from '@/components/ui/BouncyButton';
 import { SketchyFrame, Stamp, WashiTape } from '@/components/ui/PaperBits';
-import { UNWRAP_BREAK_AT } from '@/lib/realtime';
+import { UNWRAP_BREAK_AT, combinedPull } from '@/lib/realtime';
 import type { PartyMember } from '@/lib/realtime';
 import { clamp, cn } from '@/lib/utils';
 import { playPaperTear } from '@/lib/sound';
@@ -22,8 +22,14 @@ const DRAG_RANGE = 110;
 const WARM_AT = 0.25;
 const CRACK_AT = 0.55;
 
-function groupWord(progress: number, broken: boolean): string {
+function groupWord(
+  progress: number,
+  broken: boolean,
+  state: { alone: boolean; allHolding: boolean },
+): string {
   if (broken) return 'open';
+  if (state.alone && progress > 0.02) return 'needs another hand';
+  if (progress >= UNWRAP_BREAK_AT && !state.allHolding) return 'one hand short';
   if (progress >= UNWRAP_BREAK_AT) return 'giving way';
   if (progress >= CRACK_AT) return 'cracking';
   if (progress >= WARM_AT) return 'warming up';
@@ -51,30 +57,53 @@ function handWord(pull: number): string {
 export function UnwrapString({
   members,
   pulls,
-  combined,
   broken,
   onPull,
   onBreak,
   canPull,
   memberCount,
+  myUserId,
 }: {
   members: PartyMember[];
   pulls: Record<string, number>;
-  combined: number;
   broken: boolean;
   onPull: (pull: number) => void;
   onBreak: () => void;
   canPull: boolean;
   /** How many people belong to the vault, so "everyone's here" can mean it. */
   memberCount?: number;
+  /** Which strand is mine, so my own drag counts immediately — not 80 ms later. */
+  myUserId: string;
 }) {
   const reduce = useReducedMotion();
   const [localPull, setLocalPull] = useState(0);
   const brokeRef = useRef(false);
   const lastSentRef = useRef(0);
 
-  const progress = broken ? 1 : clamp(combined, 0, 1);
-  const stage = groupWord(progress, broken);
+  /**
+   * The rope only gives when *every hand in the room* is holding at once.
+   *
+   * The first version divided the total pull by the number of people present, so
+   * one person alone at 2am could pull the whole rope and spend the ceremony by
+   * themselves — which is exactly what happened the first time this was tried.
+   * A seal that one person can open is not a shared moment.
+   *
+   * So: at least two people, and every present member at or past the break
+   * threshold, *and* the combined pull past it too. My own value is folded in
+   * from local state because the parent learns about it one state update later.
+   */
+  const present = Math.max(1, members.length);
+  const myPull = Math.max(pulls[myUserId] ?? 0, localPull);
+  const effectivePulls = { ...pulls, [myUserId]: myPull };
+  const progress = broken ? 1 : clamp(combinedPull(effectivePulls, present), 0, 1);
+  const holding = members.filter(
+    (member) => (effectivePulls[member.userId] ?? 0) >= UNWRAP_BREAK_AT,
+  ).length;
+  const alone = members.length < 2;
+  const allHolding = !alone && members.every(
+    (member) => (effectivePulls[member.userId] ?? 0) >= UNWRAP_BREAK_AT,
+  );
+  const stage = groupWord(progress, broken, { alone, allHolding });
 
   const emit = (value: number) => {
     setLocalPull(value);
@@ -86,36 +115,34 @@ export function UnwrapString({
     onPull(value);
   };
 
-  const maybeBreak = (value: number) => {
-    if (broken || brokeRef.current) return;
-    if (value >= UNWRAP_BREAK_AT) {
-      brokeRef.current = true;
-      playPaperTear();
-      onBreak();
-    }
-  };
-
   /**
-   * Somebody else's pull can tip the rope over while you are idle — this is the
+   * Somebody else's hand can tip the rope over while you are idle — this is the
    * cooperative case, and it must not depend on *you* being the one dragging.
    */
   useEffect(() => {
     if (broken || brokeRef.current) return;
-    if (combined >= UNWRAP_BREAK_AT) {
-      brokeRef.current = true;
-      playPaperTear();
-      onBreak();
-    }
+    if (!allHolding) return;
+    if (progress < UNWRAP_BREAK_AT) return;
+    brokeRef.current = true;
+    playPaperTear();
+    onBreak();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [combined, broken]);
+  }, [allHolding, progress, broken]);
 
   // The ritual, as three things that either happened or have not.
   const expected = Math.max(1, memberCount ?? members.length);
   const allHere = members.length >= expected;
-  const handsOn = members.length > 0 && members.every((member) => (pulls[member.userId] ?? 0) > 0.02);
   const steps: Array<{ label: string; done: boolean }> = [
     { label: allHere ? 'everyone is here' : 'as people arrive', done: allHere },
-    { label: 'every hand on the twine', done: handsOn },
+    {
+      label:
+        members.length < 2
+          ? 'a second hand has to arrive'
+          : allHolding
+            ? 'every hand on the twine'
+            : `${holding} of ${members.length} hands on the twine`,
+      done: allHolding,
+    },
     { label: 'the wax gives way', done: broken },
   ];
 
@@ -132,7 +159,9 @@ export function UnwrapString({
           <p className="max-w-sm text-[12px] leading-relaxed text-ink-soft">
             {broken
               ? 'It is open. Everything that was sealed is about to appear below.'
-              : 'Everyone here takes the twine and holds. It gives when the whole group pulls at once — never for one pair of hands alone.'}
+              : alone
+                ? 'The twine is here, but it will not give to one pair of hands. Send the link — it opens when everyone is holding at once.'
+                : 'Everyone here takes the twine and holds to the end. The wax only gives when every hand in the room is holding at once.'}
           </p>
         </div>
         <Stamp tone={broken ? 'sage' : progress >= CRACK_AT ? 'butter' : 'cardboard'}>{stage}</Stamp>
@@ -251,9 +280,9 @@ export function UnwrapString({
               dragMomentum={false}
               onDrag={(_, info) => emit(clamp(info.offset.y / DRAG_RANGE, 0, 1))}
               onDragEnd={(_, info) => {
-                const value = clamp(info.offset.y / DRAG_RANGE, 0, 1);
-                emit(value);
-                maybeBreak(value);
+                emit(clamp(info.offset.y / DRAG_RANGE, 0, 1));
+                // The break itself is decided by the effect above, from the state
+                // of *every* hand — not from how far this one drag went.
                 // Deliberately no spring-back: your strand stays stretched where you
                 // left it, so the group total can only climb. Snapping back to zero
                 // would let one person's release erase what everybody else held.
@@ -268,7 +297,13 @@ export function UnwrapString({
                 </span>
               </div>
               <span className="mt-1 block text-center font-round text-[11px] text-ink-faint">
-                {!canPull ? 'watching along' : localPull > 0.02 ? handWord(localPull) : 'take the twine'}
+                {!canPull
+                  ? 'watching along'
+                  : localPull > 0.02
+                    ? handWord(localPull)
+                    : alone
+                      ? 'pull, and wait for hands'
+                      : 'take the twine'}
               </span>
             </motion.div>
           </div>
@@ -308,7 +343,7 @@ export function UnwrapString({
       {/* ── each person's strand ───────────────────────────────────────── */}
       <div className="mt-5 space-y-2.5">
         {members.map((member) => {
-          const pull = clamp(pulls[member.userId] ?? 0, 0, 1);
+          const pull = clamp(effectivePulls[member.userId] ?? 0, 0, 1);
           return (
             <div key={member.userId} className="flex items-center gap-3">
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-cream-100 text-[13px]" aria-hidden="true">
@@ -367,6 +402,13 @@ export function UnwrapString({
       {!canPull ? (
         <p className="mt-3 text-center text-[11px] leading-relaxed text-ink-faint">
           The rope is full of hands. Watching is a way of being here too.
+        </p>
+      ) : null}
+
+      {!broken && alone && localPull > 0.02 ? (
+        <p className="mt-3 text-center text-[11px] leading-relaxed text-ink-faint">
+          One hand can warm the wax, but it cannot break it. Somebody else has to take
+          the other end — send them the link and keep holding.
         </p>
       ) : null}
 
