@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createAdminSupabase } from '@/lib/supabase/admin';
 import { env } from '@/lib/env';
-import { sendUnlockEmail } from '@/lib/resend';
+import { activeEmailProvider, sendUnlockEmail } from '@/lib/mail';
 import { EMAIL_DAILY_CAP, REALTIME_EVENT_RETENTION_DAYS } from '@/lib/budget';
 import type { CronReport } from '@/lib/types';
 
@@ -154,8 +154,8 @@ async function runCron(request: Request): Promise<NextResponse<CronReport | { er
         ((capsules ?? []) as Array<{ id: string; title: string; unlock_at: string }>).map((c) => [c.id, c]),
       );
 
-      // Concurrency 4: Resend's free tier rate limit is gentle, and a burst of
-      // 90 parallel requests is a good way to get throttled.
+      // Concurrency 4: every free email provider rate-limits gently, and a burst
+      // of 90 parallel requests is a reliable way to get throttled.
       const results = await mapWithConcurrency(rows, 4, async (row) => {
         const capsule = capsuleById.get(row.capsule_id);
         const result = await sendUnlockEmail({
@@ -172,16 +172,20 @@ async function runCron(request: Request): Promise<NextResponse<CronReport | { er
       for (const { row, result } of results) {
         if (result.ok) {
           report.emailsSent += 1;
+          // `resend_id` is a leftover column name; it now stores whichever id the
+          // active provider handed back (Resend id or Brevo messageId).
           const { error } = await supabase
             .from('notification_queue')
             .update({ state: 'sent', sent_at: new Date().toISOString(), resend_id: result.id })
             .eq('id', row.id);
           if (error) errors.push(`mark sent ${row.id}: ${error.message}`);
         } else if (result.skipped === 'not_configured') {
-          // No Resend key: leave it pending and say so loudly rather than
-          // marking it sent and losing the notification forever.
+          // No provider: leave it pending and say so loudly rather than marking
+          // it sent and losing the notification forever.
           report.emailsDeferred += 1;
-          errors.push('resend: RESEND_API_KEY is not configured — notifications deferred');
+          errors.push(
+            `email (${activeEmailProvider()}): ${env.emailConfigProblem ?? 'provider not configured'} — notifications deferred`,
+          );
         } else {
           report.emailsDeferred += 1;
           const { error } = await supabase

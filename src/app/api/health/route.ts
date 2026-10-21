@@ -26,7 +26,7 @@ export async function GET() {
     day,
     budget: {
       storageCeilingBytes: 900 * 1024 * 1024,
-      emailDailyCap: env.resendDailyCap,
+      emailDailyCap: env.emailDailyCap,
       presenceCapPerCapsule: 20,
       cronCadence: '0 0 * * * (once daily — Vercel Hobby limit)',
     },
@@ -34,6 +34,7 @@ export async function GET() {
       supabase: env.isSupabaseConfigured,
       serviceRole: env.isCronConfigured,
       email: env.isEmailConfigured,
+      emailProvider: env.emailProvider,
     },
     supabase: 'unconfigured' as 'ok' | 'unconfigured' | 'unreachable' | 'error',
     heartbeatToday: false,
@@ -82,7 +83,11 @@ export async function GET() {
   }
 
   if (!env.isEmailConfigured) {
-    status.notes.push('RESEND_API_KEY is missing: unlock emails will be deferred, not lost.');
+    status.notes.push(
+      `${env.emailConfigProblem ?? 'No email provider'} Unlock emails will be deferred, not lost.`,
+    );
+  } else if (env.emailConfigWarning) {
+    status.notes.push(env.emailConfigWarning);
   }
 
   status.latencyMs = Date.now() - startedAt;

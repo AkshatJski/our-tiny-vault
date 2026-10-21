@@ -6,7 +6,8 @@
  * review instead of quietly at the end of the month.
  *
  *   Supabase free : 1 GB storage · 500 MB database · 200 concurrent realtime
- *   Resend free   : 100 emails / day
+ *   Resend free   : 100 emails / day (account-owner recipients only, no domain)
+ *   Brevo free    : 300 emails / day (any recipient, verified sender address)
  *   Vercel Hobby  : 1 cron run / day (max 2 cron jobs), 60s max function time
  */
 
@@ -29,7 +30,8 @@ export const PLATFORM_CEILING_BYTES = 900 * 1024 * 1024;
 
 /** Realtime presence cap per capsule. DB members cap matches this. */
 export const PRESENCE_CAP = 20;
-/** Resend free tier is 100/day; we stop at 90 so one retry never overshoots. */
+/** Free tiers are 100/day (Resend) and 300/day (Brevo); we stop at 90 so one
+ *  retry never overshoots, and the number means the same thing on both. */
 export const EMAIL_DAILY_CAP = 90;
 /** How long a presence slot is considered live. */
 export const PRESENCE_TTL_SECONDS = 180;

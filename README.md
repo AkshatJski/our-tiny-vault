@@ -117,18 +117,41 @@ Supabase → **Authentication → URL Configuration**:
 The callback route accepts both shapes Supabase sends — `?code=` (PKCE) and
 `?token_hash=&type=` (OTP) — so you do not have to pick a flow.
 
-### 5. (Optional) Email notifications with Resend
+### 5. (Optional) Email notifications with Brevo — or Resend
 
-<https://resend.com> → API key → verify a domain (or use `onboarding@resend.dev`
-to test). Then in `.env.local`:
+Either provider works; the app picks whichever keys are present. Both send the
+identical letter, and **with neither configured nothing is lost**: unlock
+notifications stay `pending` in `notification_queue` and the cron says so,
+loudly, in its report.
+
+**Brevo — free, and the only one that reaches other people on $0:**
+
+<https://brevo.com> → **SMTP & API → API keys** → create a key → **Senders** →
+add the address you want to send from and click the link in that inbox. No
+domain, no card. Then:
+
+```
+BREVO_API_KEY=xkeysib-...
+BREVO_FROM=you@gmail.com
+```
+
+Heads-up, because it surprises people: free mailbox domains (gmail.com, etc.)
+cannot carry DKIM, so Brevo rewrites the visible From address to a shared
+compliant domain at delivery time. It arrives — it just looks unfamiliar. The
+fix when you have ~$10/year is a real domain plus Resend.
+
+**Resend — better deliverability, but needs a verified domain:**
+
+<https://resend.com> → API key → verify a domain. Then:
 
 ```
 RESEND_API_KEY=re_...
 RESEND_FROM="our tiny vault <hello@your-verified-domain.com>"
 ```
 
-**With no Resend key, nothing is lost**: unlock notifications stay `pending` in
-`notification_queue` and the cron tells you so, loudly, in its report.
+Set `EMAIL_PROVIDER=brevo` or `EMAIL_PROVIDER=resend` to pin the sender when
+both sets of keys are present. Delete `BREVO_API_KEY` to fall back to Resend —
+that is the entire rollback, there is no code to revert.
 
 ### 6. Run it
 
@@ -149,9 +172,14 @@ npm run keepalive:local
 | `NEXT_PUBLIC_SUPABASE_URL` | yes | Supabase project URL. |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Public anon key. Safe in the browser; RLS is the gate. |
 | `SUPABASE_SERVICE_ROLE_KEY` | for cron | Server-only. Used **only** by the daily cron and the keep-alive. |
-| `RESEND_API_KEY` | no | Unlock emails. Missing → notifications are deferred, not lost. |
-| `RESEND_FROM` | no | Verified sender. Defaults to `onboarding@resend.dev`. |
-| `RESEND_DAILY_CAP` | no | Clamped to ≤ 90 in code. The failsafe against Resend's 100/day. |
+| `BREVO_API_KEY` | no | Brevo transactional sender. The only $0 option that reaches non-owners. |
+| `BREVO_FROM` | with Brevo | The address you verified in Brevo → Senders. |
+| `BREVO_FROM_NAME` | no | Display name on the letter. Defaults to `our tiny vault`. |
+| `EMAIL_PROVIDER` | no | `brevo` or `resend` — pins the sender when both keys exist. |
+| `EMAIL_DAILY_CAP` | no | Default 90, clamped to ≤ 90. Shared budget for either provider. |
+| `RESEND_API_KEY` | no | Resend sender. Needs a verified domain to reach anyone but the owner. |
+| `RESEND_FROM` | no | Resend sender line. Defaults to `onboarding@resend.dev`. |
+| `RESEND_DAILY_CAP` | no | Legacy alias for `EMAIL_DAILY_CAP`. Still read. |
 | `CRON_SECRET` | prod | Vercel sends `Authorization: Bearer $CRON_SECRET` to cron routes. |
 | `NEXT_PUBLIC_SITE_URL` | prod | Used to build party links inside unlock emails. |
 | `ENABLE_KEEPALIVE` | no | Default `true`. Daily DB touch so the free project never auto-pauses. |
