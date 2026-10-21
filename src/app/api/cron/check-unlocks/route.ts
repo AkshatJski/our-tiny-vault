@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { createAdminSupabase } from '@/lib/supabase/admin';
 import { env } from '@/lib/env';
-import { activeEmailProvider, sendUnlockEmail } from '@/lib/mail';
 import { EMAIL_DAILY_CAP, REALTIME_EVENT_RETENTION_DAYS } from '@/lib/budget';
+import { dispatchPendingEmails } from '@/lib/email-dispatch';
 import type { CronReport } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -109,104 +109,13 @@ async function runCron(request: Request): Promise<NextResponse<CronReport | { er
   report.emailsQueued = typeof queued === 'number' ? queued : 0;
 
   // ── 3. dispatch inside the 90/day budget ──────────────────────────────────
-  const { data: usedToday, error: quotaError } = await supabase.rpc('emails_sent_on', {
-    p_day: day,
-  });
-  if (quotaError) errors.push(`emails_sent_on: ${quotaError.message}`);
-
-  const alreadySent = typeof usedToday === 'number' ? usedToday : 0;
-  const remaining = Math.max(0, dailyCap - alreadySent);
-  report.quotaRemaining = remaining;
-
-  if (remaining === 0) {
-    // We are out of budget for today. Everything stays 'pending' and is picked
-    // up tomorrow — deferred, never dropped.
-    const { count } = await supabase
-      .from('notification_queue')
-      .select('id', { count: 'exact', head: true })
-      .eq('state', 'pending');
-    report.emailsDeferred = count ?? 0;
-  } else {
-    const { data: pending, error: pendingError } = await supabase
-      .from('notification_queue')
-      .select('id, capsule_id, user_id, email, kind')
-      .eq('state', 'pending')
-      .lte('scheduled_for', day)
-      .order('created_at', { ascending: true })
-      .limit(remaining);
-
-    if (pendingError) errors.push(`load pending: ${pendingError.message}`);
-
-    const rows = (pending ?? []) as Array<{
-      id: string;
-      capsule_id: string;
-      user_id: string;
-      email: string;
-      kind: string;
-    }>;
-
-    if (rows.length > 0) {
-      // Two small lookups, not N+1: names for the greeting, titles for the mail.
-      const userIds = Array.from(new Set(rows.map((row) => row.user_id)));
-      const capsuleIds = Array.from(new Set(rows.map((row) => row.capsule_id)));
-
-      const [{ data: profiles }, { data: capsules }] = await Promise.all([
-        supabase.from('profiles').select('id, display_name').in('id', userIds),
-        supabase.from('capsules').select('id, title, unlock_at').in('id', capsuleIds),
-      ]);
-
-      const nameById = new Map(
-        ((profiles ?? []) as Array<{ id: string; display_name: string }>).map((p) => [p.id, p.display_name]),
-      );
-      const capsuleById = new Map(
-        ((capsules ?? []) as Array<{ id: string; title: string; unlock_at: string }>).map((c) => [c.id, c]),
-      );
-
-      // Concurrency 4: every free email provider rate-limits gently, and a burst
-      // of 90 parallel requests is a reliable way to get throttled.
-      const results = await mapWithConcurrency(rows, 4, async (row) => {
-        const capsule = capsuleById.get(row.capsule_id);
-        const result = await sendUnlockEmail({
-          to: row.email,
-          displayName: nameById.get(row.user_id) ?? 'friend',
-          capsuleTitle: capsule?.title ?? 'our capsule',
-          unlockAt: capsule?.unlock_at ?? new Date().toISOString(),
-          partyUrl: `${env.siteUrl}/capsules/${row.capsule_id}/party`,
-          capsuleId: row.capsule_id,
-        });
-        return { row, result };
-      });
-
-      for (const { row, result } of results) {
-        if (result.ok) {
-          report.emailsSent += 1;
-          // `resend_id` is a leftover column name; it now stores whichever id the
-          // active provider handed back (Resend id or Brevo messageId).
-          const { error } = await supabase
-            .from('notification_queue')
-            .update({ state: 'sent', sent_at: new Date().toISOString(), resend_id: result.id })
-            .eq('id', row.id);
-          if (error) errors.push(`mark sent ${row.id}: ${error.message}`);
-        } else if (result.skipped === 'not_configured') {
-          // No provider: leave it pending and say so loudly rather than marking
-          // it sent and losing the notification forever.
-          report.emailsDeferred += 1;
-          errors.push(
-            `email (${activeEmailProvider()}): ${env.emailConfigProblem ?? 'provider not configured'} — notifications deferred`,
-          );
-        } else {
-          report.emailsDeferred += 1;
-          const { error } = await supabase
-            .from('notification_queue')
-            .update({ state: 'failed', error: result.error ?? 'unknown', attempts: 1 })
-            .eq('id', row.id);
-          if (error) errors.push(`mark failed ${row.id}: ${error.message}`);
-        }
-      }
-
-      report.quotaRemaining = Math.max(0, remaining - report.emailsSent);
-    }
-  }
+  // The sending half now lives in lib/email-dispatch.ts, because the on-demand
+  // "somebody just opened this vault" route needs exactly the same rules.
+  const outcome = await dispatchPendingEmails(supabase, { day, cap: dailyCap });
+  report.emailsSent = outcome.sent;
+  report.emailsDeferred = outcome.deferred;
+  report.quotaRemaining = outcome.remaining;
+  errors.push(...outcome.errors);
 
   // ── 4. housekeeping ──────────────────────────────────────────────────────
   const { data: pruned, error: pruneError } = await supabase.rpc('prune_realtime_events', {
@@ -305,22 +214,3 @@ async function writeWeeklyBackup(
   }
 }
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  limit: number,
-  worker: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let cursor = 0;
-
-  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
-    while (cursor < items.length) {
-      const index = cursor;
-      cursor += 1;
-      results[index] = await worker(items[index]);
-    }
-  });
-
-  await Promise.all(runners);
-  return results;
-}

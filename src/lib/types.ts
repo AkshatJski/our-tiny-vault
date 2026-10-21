@@ -119,6 +119,21 @@ export interface PredictionWithAuthor extends PredictionResponse {
   author: Pick<Profile, 'id' | 'handle' | 'display_name' | 'avatar_emoji'> | null;
 }
 
+/**
+ * One person's opinion on one guess, after the capsule opens.
+ *
+ * The reading room used to be a race: the first click stamped the guess and the
+ * buttons vanished for everyone else. Now every member gets a row here, can
+ * change their mind, and the tally drives the stamp.
+ */
+export interface PredictionVote {
+  prediction_id: string;
+  user_id: string;
+  vote: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export type RealtimeEventType =
   | 'presence_join'
   | 'presence_leave'

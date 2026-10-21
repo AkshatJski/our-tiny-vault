@@ -102,6 +102,8 @@ order. They are numbered because they build on each other.
 | `supabase/migrations/0004_storage.sql` | The private `capsule-media` bucket, its path-based policies, `capsule-backups`, and the `storage_overview` view. |
 | `supabase/migrations/0005_fix_storage_policies.sql` | Re-asserts the bucket's size/mime limits and drops the metadata checks that made **every** photo and audio upload fail with `403`. |
 | `supabase/migrations/0006_storage_owner_delete.sql` | Lets a capsule's **owner** clear its media when they delete the vault. Without it, deleting a vault leaves every photo and voice note in the bucket forever (storage objects are not part of the database's cascade). |
+| `supabase/migrations/0007_prediction_votes.sql` | Turns the reading room from a first-click race into a vote: one row per person per guess, changeable, visible to every member once the capsule opens. |
+| `supabase/migrations/0008_unlock_notify_now.sql` | Lets the app announce an opening the moment someone loads the vault, instead of waiting for the once-a-day cron. The `unlocked_notified_at is null` compare-and-swap is what stops it mailing everyone on every visit. |
 
 > If you prefer the CLI: `supabase db push` applies them in filename order for you.
 
@@ -327,6 +329,12 @@ Link** type — file uploads are intentionally not supported.
 Check `/api/health` for `configured.email`. With no key, notifications are marked
 `pending` and retried by tomorrow's cron, not dropped. Check `notification_queue`
 and `cron_runs` for the record.
+
+The letters go out when someone opens the vault (the app asks the server once,
+right after unlock), so if nobody has looked at it yet, nothing has been sent. The
+daily cron is the backstop and will mail everyone even for a vault nobody visited
+— which is also why a vault opened at 7 PM may not be announced until the next
+morning if no one opens it first.
 
 **The 21st person in the party cannot pull the string.**
 Working as designed — see the presence cap above. They still see everything live;

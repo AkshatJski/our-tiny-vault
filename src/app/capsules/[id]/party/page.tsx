@@ -6,10 +6,12 @@ import { BouncyButton } from '@/components/ui/BouncyButton';
 import { SketchyFrame, Stamp } from '@/components/ui/PaperBits';
 import { createServerSupabase, getSessionProfile } from '@/lib/supabase/server';
 import { CONTRIBUTIONS_SELECT, PREDICTIONS_SELECT } from '@/lib/contributions-select';
+import { fetchPredictionVotes } from '@/lib/contributions';
 import { env } from '@/lib/env';
 import { formatUnlockMoment } from '@/lib/utils';
 import { PRESENCE_CAP } from '@/lib/budget';
 import type { CapsuleSummary, ContributionWithAuthor, PredictionWithAuthor } from '@/lib/types';
+import { UnlockNotifier } from '@/components/UnlockNotifier';
 
 const PartyLobby = dynamic(() => import('@/components/party/PartyLobby').then((m) => m.PartyLobby), {
   ssr: false,
@@ -45,10 +47,11 @@ export default async function PartyPage({ params }: { params: { id: string } }) 
     .from('capsules')
     .select(
       `id, owner_id, title, subtitle, theme, cover_emoji, seal_at, unlock_at, max_members,
-       member_count, storage_quota_bytes, storage_bytes, contribution_count, prediction_count, status`,
+       member_count, storage_quota_bytes, storage_bytes, contribution_count, prediction_count, status,
+       unlocked_notified_at`,
     )
     .eq('id', params.id)
-    .maybeSingle<CapsuleSummary>();
+    .maybeSingle<CapsuleSummary & { unlocked_notified_at: string | null }>();
 
   if (!capsule) notFound();
 
@@ -101,6 +104,12 @@ export default async function PartyPage({ params }: { params: { id: string } }) 
       .order('created_at', { ascending: true }),
   ]);
 
+  const initialPredictions = (predictionRows ?? []) as unknown as PredictionWithAuthor[];
+  const initialVotes = await fetchPredictionVotes(
+    supabase,
+    initialPredictions.map((prediction) => prediction.id),
+  );
+
   return (
     <>
       <div className="mx-auto w-full max-w-4xl px-5 pt-6 sm:px-6">
@@ -109,12 +118,15 @@ export default async function PartyPage({ params }: { params: { id: string } }) 
         </Link>
       </div>
 
+      <UnlockNotifier capsuleId={capsule.id} enabled={!capsule.unlocked_notified_at} />
+
       <PartyLobby
         capsule={capsule}
         profile={profile}
         initiallyUnlocked
         initialContributions={(contributionRows ?? []) as unknown as ContributionWithAuthor[]}
-        initialPredictions={(predictionRows ?? []) as unknown as PredictionWithAuthor[]}
+        initialPredictions={initialPredictions}
+        initialVotes={initialVotes}
       />
     </>
   );

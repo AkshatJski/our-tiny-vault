@@ -23,6 +23,7 @@ import {
 import type {
   CapsuleSummary,
   ContributionWithAuthor,
+  PredictionVote,
   PredictionWithAuthor,
   Profile,
   RealtimeTicket,
@@ -57,12 +58,14 @@ export function PartyLobby({
   initiallyUnlocked,
   initialContributions,
   initialPredictions,
+  initialVotes,
 }: {
   capsule: CapsuleSummary;
   profile: LobbyProfile;
   initiallyUnlocked: boolean;
   initialContributions: ContributionWithAuthor[];
   initialPredictions: PredictionWithAuthor[];
+  initialVotes: PredictionVote[];
 }) {
   const [ticket, setTicket] = useState<RealtimeTicket | null>(null);
   const [connected, setConnected] = useState(false);
@@ -417,21 +420,8 @@ export function PartyLobby({
               unlocked
               sealedCount={predictions.length}
               predictions={predictions}
-              onResolved={(id, isCorrect) => {
-                setPredictions((prev) =>
-                  prev.map((item) =>
-                    item.id === id
-                      ? {
-                          ...item,
-                          is_correct: isCorrect,
-                          resolved_at: new Date().toISOString(),
-                          resolved_by: profile.id,
-                          resolved_guess: item.guess,
-                        }
-                      : item,
-                  ),
-                );
-              }}
+              votes={initialVotes}
+              memberCount={capsule.member_count}
             />
           </>
         )}

@@ -6,14 +6,14 @@ import { BouncyButton } from '@/components/ui/BouncyButton';
 import { PinDot, SketchyFrame, Stamp } from '@/components/ui/PaperBits';
 import { ScratchOffResolution } from '@/components/party/ScratchOffResolution';
 import { getBrowserSupabase } from '@/lib/supabase/client';
-import { resolvePrediction, sealPrediction } from '@/lib/contributions';
+import { castPredictionVote, sealPrediction } from '@/lib/contributions';
 import {
   PROMPT_PACK,
   forgetGuess,
   readGuessLedger,
   rememberGuess,
 } from '@/lib/prompts';
-import type { PredictionWithAuthor, Profile } from '@/lib/types';
+import type { PredictionVote, PredictionWithAuthor, Profile } from '@/lib/types';
 import { cn, friendlyError, truncate } from '@/lib/utils';
 import { playCrinkle, playPop } from '@/lib/sound';
 
@@ -46,17 +46,61 @@ export function PredictionPinboard({
   unlocked,
   sealedCount,
   predictions,
+  votes,
+  memberCount,
   onSealed,
-  onResolved,
 }: {
   capsuleId: string;
   profile: PinboardProfile;
   unlocked: boolean;
   sealedCount: number;
   predictions: PredictionWithAuthor[];
+  /** Votes already cast, seeded by the server (empty before unlock — by policy). */
+  votes?: PredictionVote[];
+  /** How many people are in the vault: the denominator for "waiting on N". */
+  memberCount?: number;
   onSealed?: (prediction: PredictionWithAuthor) => void;
-  onResolved?: (predictionId: string, isCorrect: boolean) => void;
 }) {
+  const [allVotes, setAllVotes] = useState<PredictionVote[]>(votes ?? []);
+  const members = Math.max(memberCount ?? 0, 1);
+
+  /**
+   * Optimistic on purpose: a vote is a tiny, reversible thing, and waiting on a
+   * round-trip before the bar moves makes the room feel dead. If the write is
+   * refused (sealed capsule, policy, network) we put the old list back and let
+   * the slip show the error.
+   */
+  const castVote = async (predictionId: string, value: boolean) => {
+    const previous = allVotes;
+    const mine = previous.find(
+      (vote) => vote.prediction_id === predictionId && vote.user_id === profile.id,
+    );
+
+    const optimistic: PredictionVote = {
+      prediction_id: predictionId,
+      user_id: profile.id,
+      vote: value,
+      created_at: mine?.created_at ?? new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    setAllVotes((prev) => [
+      ...prev.filter(
+        (vote) => !(vote.prediction_id === predictionId && vote.user_id === profile.id),
+      ),
+      optimistic,
+    ]);
+
+    try {
+      const supabase = getBrowserSupabase();
+      await castPredictionVote(supabase, { predictionId, userId: profile.id, vote: value });
+      playPop(value ? 1.2 : 0.8);
+    } catch (error) {
+      setAllVotes(previous);
+      throw error;
+    }
+  };
+
   return (
     <section className="space-y-4">
       <header className="flex flex-wrap items-end justify-between gap-3">
@@ -64,7 +108,7 @@ export function PredictionPinboard({
           <h2 className="font-script text-3xl leading-none text-cardboard-deep">Dear Future Us</h2>
           <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-ink-soft">
             {unlocked
-              ? 'Every guess, unsealed at last. Scratch each one off to see what we thought would happen.'
+              ? 'Scratch each slip to read what we expected would happen. Then vote — everybody gets a say, and you can change your mind.'
               : 'Pin a guess to the board. It stays sealed — and unreadable — until the capsule opens.'}
           </p>
         </div>
@@ -90,8 +134,15 @@ export function PredictionPinboard({
                   key={prediction.id}
                   prediction={prediction}
                   index={index}
-                  viewerId={profile.id}
-                  onResolved={onResolved}
+                  votes={allVotes.filter((vote) => vote.prediction_id === prediction.id)}
+                  myVote={
+                    allVotes.find(
+                      (vote) =>
+                        vote.prediction_id === prediction.id && vote.user_id === profile.id,
+                    )?.vote ?? null
+                  }
+                  memberCount={members}
+                  onVote={castVote}
                 />
               ))}
             </div>
@@ -153,40 +204,52 @@ function SealedSlip({ index }: { index: number }) {
   );
 }
 
-/** A guess, revealed and scratchable. */
+/**
+ * A guess, revealed and scratchable — and now voted on.
+ *
+ * The old version had one destructive stamp: first click won, everyone else was
+ * locked out. This one is a poll. Your own vote is highlighted, you can switch
+ * it, and the slip always says how much of the group has spoken, because "3 of 5
+ * voted" is the difference between a decision and a shrug.
+ */
 function RevealedSlip({
   prediction,
   index,
-  viewerId,
-  onResolved,
+  votes,
+  myVote,
+  memberCount,
+  onVote,
 }: {
   prediction: PredictionWithAuthor;
   index: number;
-  viewerId: string;
-  onResolved?: (predictionId: string, isCorrect: boolean) => void;
+  votes: PredictionVote[];
+  myVote: boolean | null;
+  memberCount: number;
+  onVote: (predictionId: string, value: boolean) => Promise<void>;
 }) {
   const tilt = [-3, 2, -1, 3, -2, 1][index % 6];
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<boolean | null>(null);
   const [error, setError] = useState<string | null>(null);
   const author = prediction.author;
 
-  const resolved = prediction.is_correct !== null;
+  const cast = votes.length;
+  const yes = votes.filter((vote) => vote.vote).length;
+  const no = cast - yes;
+  const yesPercent = cast === 0 ? 0 : Math.round((yes / cast) * 100);
+  const waiting = Math.max(0, memberCount - cast);
 
-  const stamp = async (isCorrect: boolean) => {
-    setBusy(true);
+  const verdict: 'yes' | 'no' | 'tie' | null =
+    cast === 0 ? null : yes > no ? 'yes' : no > yes ? 'no' : 'tie';
+
+  const vote = async (value: boolean) => {
+    setBusy(value);
     setError(null);
     try {
-      const supabase = getBrowserSupabase();
-      await resolvePrediction(supabase, prediction.id, viewerId, {
-        resolvedGuess: prediction.guess,
-        isCorrect,
-      });
-      playPop(isCorrect ? 1.25 : 0.8);
-      onResolved?.(prediction.id, isCorrect);
+      await onVote(prediction.id, value);
     } catch (err) {
       setError(friendlyError(err));
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -205,13 +268,9 @@ function RevealedSlip({
       </p>
 
       <div className="mt-2 rounded-lg border border-dashed border-cream-300 bg-cream-50 p-3">
-        {resolved ? (
+        <ScratchOffResolution className="min-h-[68px]" onRevealed={() => playCrinkle(0.4)}>
           <p className="font-sketch text-[14px] leading-6 text-ink">{prediction.guess}</p>
-        ) : (
-          <ScratchOffResolution className="min-h-[68px]" onRevealed={() => playCrinkle(0.4)}>
-            <p className="font-sketch text-[14px] leading-6 text-ink">{prediction.guess}</p>
-          </ScratchOffResolution>
-        )}
+        </ScratchOffResolution>
       </div>
 
       <div className="mt-3 flex items-center gap-2">
@@ -222,24 +281,75 @@ function RevealedSlip({
           {author?.display_name ?? 'someone'}
         </span>
         <span className="ml-auto">
-          {resolved ? (
-            <Stamp tone={prediction.is_correct ? 'sage' : 'blush'}>
-              {prediction.is_correct ? 'called it ✦' : 'not quite'}
-            </Stamp>
-          ) : null}
+          {verdict === 'yes' ? <Stamp tone="sage">called it ✦</Stamp> : null}
+          {verdict === 'no' ? <Stamp tone="blush">not quite</Stamp> : null}
+          {verdict === 'tie' ? <Stamp tone="butter">split down the middle</Stamp> : null}
+          {verdict === null ? <Stamp tone="cardboard">no votes yet</Stamp> : null}
         </span>
       </div>
 
-      {!resolved ? (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-[11px] uppercase tracking-[0.12em] text-ink-faint">did it happen?</span>
-          <BouncyButton size="sm" tone="sage" loading={busy} onClick={() => void stamp(true)}>
-            yes
-          </BouncyButton>
-          <BouncyButton size="sm" tone="ghost" loading={busy} onClick={() => void stamp(false)}>
-            no
-          </BouncyButton>
+      {/* The tally. Two colours, one bar: the argument itself, made visible. */}
+      <div className="mt-3">
+        <div
+          className="flex h-2 overflow-hidden rounded-full bg-cream-300"
+          role="img"
+          aria-label={
+            cast === 0
+              ? 'no votes yet'
+              : `${yes} said yes, ${no} said no, ${waiting} still to vote`
+          }
+        >
+          <div className="bg-sage-deep transition-[width] duration-500" style={{ width: `${yesPercent}%` }} />
+          <div
+            className="bg-blush-deep/70 transition-[width] duration-500"
+            style={{ width: `${100 - yesPercent}%` }}
+          />
         </div>
+        <div className="mt-1 flex items-baseline justify-between gap-2 text-[11px] text-ink-faint">
+          <span>
+            {cast === 0
+              ? 'nobody has voted'
+              : `${yesPercent}% said yes · ${yes} of ${cast}`}
+          </span>
+          <span>{waiting === 0 ? 'everyone voted' : `waiting on ${waiting}`}</span>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => void vote(true)}
+          disabled={busy !== null || myVote === true}
+          aria-pressed={myVote === true}
+          className={cn(
+            'rounded-full border px-3 py-2 font-round text-[12px] font-semibold transition-colors',
+            myVote === true
+              ? 'border-sage-deep bg-sage-light text-sage-deep'
+              : 'border-cream-300 bg-cream-50 text-ink-soft hover:bg-cream-200',
+          )}
+        >
+          {busy === true ? '…' : myVote === true ? '✓ yes it happened' : 'yes it happened'}
+        </button>
+        <button
+          type="button"
+          onClick={() => void vote(false)}
+          disabled={busy !== null || myVote === false}
+          aria-pressed={myVote === false}
+          className={cn(
+            'rounded-full border px-3 py-2 font-round text-[12px] font-semibold transition-colors',
+            myVote === false
+              ? 'border-blush-deep bg-blush-light text-blush-deep'
+              : 'border-cream-300 bg-cream-50 text-ink-soft hover:bg-cream-200',
+          )}
+        >
+          {busy === false ? '…' : myVote === false ? '✓ no it did not' : 'no it did not'}
+        </button>
+      </div>
+
+      {myVote !== null ? (
+        <p className="mt-2 text-center text-[11px] text-ink-faint">
+          your vote — tap the other one to change it
+        </p>
       ) : null}
 
       {error ? <p className="mt-2 text-[11px] text-blush-deep">{error}</p> : null}

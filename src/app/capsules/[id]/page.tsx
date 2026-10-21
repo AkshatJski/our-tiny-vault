@@ -9,12 +9,14 @@ import { BouncyButton } from '@/components/ui/BouncyButton';
 import { DotDivider, SketchyFrame, Stamp } from '@/components/ui/PaperBits';
 import { createServerSupabase, getSessionProfile } from '@/lib/supabase/server';
 import { CONTRIBUTIONS_SELECT, PREDICTIONS_SELECT } from '@/lib/contributions-select';
+import { fetchPredictionVotes } from '@/lib/contributions';
 import { env } from '@/lib/env';
 import { formatBytes, storagePercent } from '@/lib/budget';
 import { formatUnlockMoment, seededUnit } from '@/lib/utils';
 import type { CapsuleSummary, ContributionWithAuthor, PredictionWithAuthor, Profile } from '@/lib/types';
 import { DeleteVaultButton } from '@/components/DeleteVaultButton';
 import { RefreshOnUnlock } from '@/components/RefreshOnUnlock';
+import { UnlockNotifier } from '@/components/UnlockNotifier';
 import { SignOutButton } from '@/components/auth/SignOutButton';
 
 export const dynamic = 'force-dynamic';
@@ -46,10 +48,10 @@ export default async function CapsuleHubPage({ params }: { params: { id: string 
     .select(
       `id, owner_id, title, subtitle, theme, cover_emoji, invite_code, seal_at, unlock_at,
        max_members, member_count, storage_quota_bytes, storage_bytes, contribution_count,
-       prediction_count, status`,
+       prediction_count, status, unlocked_notified_at`,
     )
     .eq('id', params.id)
-    .maybeSingle<CapsuleSummary & { invite_code: string }>();
+    .maybeSingle<CapsuleSummary & { invite_code: string; unlocked_notified_at: string | null }>();
 
   // A non-member gets the same 404 as a wrong id. Capsule membership is not
   // something to confirm or deny to a stranger.
@@ -95,6 +97,10 @@ export default async function CapsuleHubPage({ params }: { params: { id: string 
   const contributions = (contributionRows ?? []) as unknown as ContributionWithAuthor[];
   const predictions = (predictionRows ?? []) as unknown as PredictionWithAuthor[];
 
+  // Votes are their own table and their own policy: they only exist after the
+  // capsule opens, and only a member can read them.
+  const votes = unlocked ? await fetchPredictionVotes(supabase, predictions.map((p) => p.id)) : [];
+
   return (
     <main className="mx-auto w-full max-w-5xl px-5 pb-24 pt-8 sm:px-8">
       <div className="flex items-center justify-between">
@@ -106,6 +112,14 @@ export default async function CapsuleHubPage({ params }: { params: { id: string 
 
       {/* When the clock runs out while this tab is open, ask the server again. */}
       {unlocked ? null : <RefreshOnUnlock unlockAt={capsule.unlock_at} />}
+
+      {/* The first member to arrive after the vault opens tells the others. The
+          server makes this idempotent, so a full party pinging at once still
+          sends one round of letters. */}
+      <UnlockNotifier
+        capsuleId={capsule.id}
+        enabled={unlocked && !capsule.unlocked_notified_at}
+      />
 
       {/* ── the front of the box ─────────────────────────────────────────── */}
       <header className="relative mt-4 rounded-3xl border border-cream-300 bg-cream-50 p-6 shadow-paper sm:p-9">
@@ -240,6 +254,8 @@ export default async function CapsuleHubPage({ params }: { params: { id: string 
             unlocked
             sealedCount={predictions.length}
             predictions={predictions}
+            votes={votes}
+            memberCount={members.length}
           />
         </>
       ) : (
