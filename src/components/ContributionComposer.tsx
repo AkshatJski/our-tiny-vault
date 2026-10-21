@@ -69,14 +69,8 @@ export function ContributionComposer({
   const [showSealGuide, setShowSealGuide] = useState(false);
   const [bundle, setBundle] = useState<BundleItem[]>([]);
 
-  const revokeCurrent = () => {
-    if (image) URL.revokeObjectURL(image.previewUrl);
-    if (audio) URL.revokeObjectURL(audio.previewUrl);
-  };
-
   const resetCurrent = () => {
     setBody('');
-    revokeCurrent();
     setImage(null);
     setAudio(null);
     setLinkUrl('');
@@ -117,19 +111,10 @@ export function ContributionComposer({
   };
 
   const removeFromBundle = (id: string) => {
-    setBundle((prev) => {
-      const item = prev.find((i) => i.id === id);
-      if (item?.image) URL.revokeObjectURL(item.image.previewUrl);
-      if (item?.audio) URL.revokeObjectURL(item.audio.previewUrl);
-      return prev.filter((i) => i.id !== id);
-    });
+    setBundle((prev) => prev.filter((i) => i.id !== id));
   };
 
   const clearBundle = () => {
-    bundle.forEach((item) => {
-      if (item.image) URL.revokeObjectURL(item.image.previewUrl);
-      if (item.audio) URL.revokeObjectURL(item.audio.previewUrl);
-    });
     setBundle([]);
   };
 
