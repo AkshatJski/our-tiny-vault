@@ -6,7 +6,8 @@ import { BouncyButton } from '@/components/ui/BouncyButton';
 import { PinDot, SketchyFrame, Stamp } from '@/components/ui/PaperBits';
 import { ScratchOffResolution } from '@/components/party/ScratchOffResolution';
 import { getBrowserSupabase } from '@/lib/supabase/client';
-import { castPredictionVote, sealPrediction } from '@/lib/contributions';
+import { sealPrediction } from '@/lib/contributions';
+import { castPredictionVote } from '@/lib/votes';
 import {
   PROMPT_PACK,
   forgetGuess,

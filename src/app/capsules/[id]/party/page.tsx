@@ -6,7 +6,7 @@ import { BouncyButton } from '@/components/ui/BouncyButton';
 import { SketchyFrame, Stamp } from '@/components/ui/PaperBits';
 import { createServerSupabase, getSessionProfile } from '@/lib/supabase/server';
 import { CONTRIBUTIONS_SELECT, PREDICTIONS_SELECT } from '@/lib/contributions-select';
-import { fetchPredictionVotes } from '@/lib/contributions';
+import { fetchPredictionVotes } from '@/lib/votes';
 import { env } from '@/lib/env';
 import { formatUnlockMoment } from '@/lib/utils';
 import { PRESENCE_CAP } from '@/lib/budget';
