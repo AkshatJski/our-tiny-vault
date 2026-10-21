@@ -225,8 +225,8 @@ export function UnwrapString({
               textAnchor="middle"
               fontSize="15"
               fill="#7A3E39"
-              animate={{ opacity: [0.75, 1, 0.75] }}
-              transition={{ repeat: Infinity, duration: 2.6 }}
+              animate={reduce ? { opacity: 1 } : { opacity: [0.75, 1, 0.75] }}
+              transition={reduce ? { duration: 0 } : { repeat: Infinity, duration: 2.6 }}
             >
               ✦
             </motion.text>
@@ -236,9 +236,17 @@ export function UnwrapString({
         {/* ── the pull tag ───────────────────────────────────────────── */}
         {!broken ? (
           <motion.div
-            drag={canPull && !reduce ? 'y' : false}
+            /**
+             * `useReducedMotion` must never gate the drag itself. It reports the
+             * operating system's "reduce animation" setting, which is on for
+             * plenty of people (and on this machine) — and the first version
+             * wired it to `drag`, which left the rope unpullable and the party
+             * permanently sealed. Reduced motion means fewer decorative
+             * animations, not a disabled hand.
+             */
+            drag={canPull ? 'y' : false}
             dragConstraints={{ top: 0, bottom: DRAG_RANGE }}
-            dragElastic={0.06}
+            dragElastic={reduce ? 0 : 0.06}
             dragMomentum={false}
             onDrag={(_, info) => emit(clamp(info.offset.y / DRAG_RANGE, 0, 1))}
             onDragEnd={(_, info) => {
@@ -249,7 +257,7 @@ export function UnwrapString({
               // left it, so the group total can only climb. Snapping back to zero
               // would let one person's release erase what everybody else held.
             }}
-            whileTap={canPull && !reduce ? { cursor: 'grabbing' } : undefined}
+            whileTap={canPull ? { cursor: 'grabbing' } : undefined}
             className={cn(
               'relative z-10 mt-[168px] select-none',
               canPull ? 'cursor-grab' : 'cursor-not-allowed opacity-60',
